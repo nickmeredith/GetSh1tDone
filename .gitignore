@@ -126,3 +126,9 @@ venv/
 # Project specific
 create_project.py
 
+# Xcode user-specific files
+xcuserdata/
+*.xcuserdatad
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+
