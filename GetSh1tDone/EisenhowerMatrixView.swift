@@ -10,7 +10,7 @@ struct EisenhowerMatrixView: View {
     @State private var draggedTask: TaskItem?
     @State private var showingTaskDetail: TaskItem?
     @State private var showingError: String?
-    @State private var showCompletedTasks = true
+    @State private var showCompletedTasks = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -203,7 +203,7 @@ struct QuadrantView: View {
             
             // Tasks
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 6) {
                     ForEach(tasks) { task in
                         TaskCard(
                             task: task,
@@ -319,80 +319,114 @@ struct TaskCard: View {
     let onDelete: () -> Void
     let onToggleComplete: () -> Void
     
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
+    
+    // Swipe threshold - how far to swipe before completing
+    private let swipeThreshold: CGFloat = 100
+    
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Drag Handle
-            Image(systemName: "line.3.horizontal")
-                .foregroundColor(.gray.opacity(0.4))
-                .font(.caption)
-                .padding(.top, 2)
-            
-            // Checkbox
-            Button(action: onToggleComplete) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(task.isCompleted ? .gray : .gray.opacity(0.5))
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-            
-            // Task Content
-            VStack(alignment: .leading, spacing: 8) {
-                // Task Title
+        HStack(alignment: .top, spacing: 8) {
+            // Task Content (more compact)
+            VStack(alignment: .leading, spacing: 4) {
+                // Task Title - smaller font
                 Text(task.title)
-                    .font(.body)
+                    .font(.system(size: 13))
                     .foregroundColor(task.isCompleted ? .gray.opacity(0.6) : .primary)
                     .strikethrough(task.isCompleted)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // Tags
+                // Tags - smaller
                 if !task.tags.isEmpty {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         ForEach(task.tags, id: \.self) { tag in
-                            HStack(spacing: 4) {
+                            HStack(spacing: 2) {
                                 Image(systemName: "tag.fill")
-                                    .font(.caption2)
+                                    .font(.system(size: 8))
                                 Text(tag)
-                                    .font(.caption)
+                                    .font(.system(size: 10))
                             }
-                            .foregroundColor(.gray.opacity(0.7))
+                            .foregroundColor(.gray.opacity(0.6))
                         }
                     }
                 }
             }
             
-            // Action Buttons
-            HStack(spacing: 8) {
+            // Action Buttons - smaller and more compact
+            HStack(spacing: 6) {
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
-                        .foregroundColor(.gray.opacity(0.7))
-                        .font(.caption)
+                        .foregroundColor(.gray.opacity(0.6))
+                        .font(.system(size: 11))
                 }
                 .buttonStyle(.plain)
                 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .foregroundColor(.gray.opacity(0.7))
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: {}) {
-                    Image(systemName: "ellipsis")
-                        .foregroundColor(.gray.opacity(0.7))
-                        .font(.caption)
+                        .foregroundColor(.gray.opacity(0.6))
+                        .font(.system(size: 11))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+        )
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    // Only allow swiping right (positive translation)
+                    if value.translation.width > 0 {
+                        dragOffset = value.translation.width
+                        isDragging = true
+                    }
+                }
+                .onEnded { value in
+                    // If swiped far enough to the right, complete the task
+                    if value.translation.width > swipeThreshold && !task.isCompleted {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                        onToggleComplete()
+                        
+                        // Haptic feedback
+                        #if os(iOS)
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        #endif
+                    } else {
+                        // Spring back to original position
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+                    isDragging = false
+                }
         )
         .onTapGesture {
             onTap()
         }
+        .overlay(
+            // Visual feedback when swiping
+            Group {
+                if isDragging && dragOffset > 0 {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title2)
+                            .opacity(min(dragOffset / swipeThreshold, 1.0))
+                            .padding(.trailing, 12)
+                    }
+                }
+            }
+        )
     }
 }
 
