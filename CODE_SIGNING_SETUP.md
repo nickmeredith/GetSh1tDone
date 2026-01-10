@@ -67,3 +67,4 @@ The easiest solution is to change the bundle identifier in Xcode:
 
 This should resolve both errors!
 
+

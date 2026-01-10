@@ -1,9 +1,16 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct EisenhowerMatrixView: View {
     @EnvironmentObject var remindersManager: RemindersManager
     @State private var draggedTask: TaskItem?
     @State private var showingTaskDetail: TaskItem?
+    @State private var showingError: String?
+    @State private var showCompletedTasks = true
     
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +22,20 @@ struct EisenhowerMatrixView: View {
                     .padding()
                 
                 Spacer()
+                
+                // Toggle for completed tasks
+                HStack(spacing: 8) {
+                    Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Toggle("Show Completed", isOn: $showCompletedTasks)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(.systemBackground).opacity(0.8))
+                .cornerRadius(8)
                 
                 Button(action: {
                     Task {
@@ -35,7 +56,7 @@ struct EisenhowerMatrixView: View {
                         // Top Row
                         QuadrantView(
                             quadrant: .doNow,
-                            tasks: remindersManager.getTasksForQuadrant(.doNow),
+                            tasks: remindersManager.getTasksForQuadrant(.doNow, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -46,7 +67,7 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .delegate,
-                            tasks: remindersManager.getTasksForQuadrant(.delegate),
+                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -60,7 +81,7 @@ struct EisenhowerMatrixView: View {
                         // Bottom Row
                         QuadrantView(
                             quadrant: .schedule,
-                            tasks: remindersManager.getTasksForQuadrant(.schedule),
+                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -71,7 +92,7 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .bin,
-                            tasks: remindersManager.getTasksForQuadrant(.bin),
+                            tasks: remindersManager.getTasksForQuadrant(.bin, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -88,9 +109,57 @@ struct EisenhowerMatrixView: View {
         }
         .task {
             if remindersManager.authorizationStatus == .notDetermined {
-                try? await remindersManager.requestAccess()
+                do {
+                    try await remindersManager.requestAccess()
+                } catch {
+                    showingError = "Failed to get Reminders access: \(error.localizedDescription)"
+                }
             }
             await remindersManager.loadReminders()
+        }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Refresh when app comes to foreground to catch external changes
+            Task {
+                await remindersManager.loadReminders()
+            }
+        }
+        #elseif os(macOS)
+        .onReceive(NSApplication.willBecomeActiveNotification) { _ in
+            // Refresh when app becomes active to catch external changes
+            Task {
+                await remindersManager.loadReminders()
+            }
+        }
+        #endif
+        .onChange(of: remindersManager.lastError) { error in
+            if let error = error {
+                showingError = error
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { showingError != nil },
+            set: { if !$0 { showingError = nil } }
+        )) {
+            Button("OK") {
+                showingError = nil
+            }
+        } message: {
+            if let error = showingError {
+                Text(error)
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { showingError != nil },
+            set: { if !$0 { showingError = nil } }
+        )) {
+            Button("OK") {
+                showingError = nil
+            }
+        } message: {
+            if let error = showingError {
+                Text(error)
+            }
         }
     }
 }
@@ -153,8 +222,17 @@ struct QuadrantView: View {
                             }
                         )
                         .draggable(task.id) {
-                            TaskCard(task: task, quadrantColor: quadrantColor, onTap: {}, onEdit: {}, onDelete: {}, onToggleComplete: {})
-                                .opacity(0.5)
+                            TaskCard(
+                                task: task,
+                                quadrantColor: quadrantColor,
+                                onTap: {},
+                                onEdit: {},
+                                onDelete: {},
+                                onToggleComplete: {}
+                            )
+                            .opacity(0.6)
+                            .scaleEffect(0.9)
+                            .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
                         }
                     }
                     
@@ -182,15 +260,28 @@ struct QuadrantView: View {
         .frame(width: geometry.size.width / 2, height: geometry.size.height / 2)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(red: 1.0, green: 0.95, blue: 0.95))
+                .fill(isTargeted ? quadrantColor.opacity(0.15) : Color(red: 1.0, green: 0.95, blue: 0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isTargeted ? quadrantColor : Color.clear, lineWidth: isTargeted ? 3 : 0)
+                )
         )
-        .dropDestination(for: String.self) { droppedIds, _ in
+        .dropDestination(for: String.self) { droppedIds, location in
             guard let droppedId = droppedIds.first,
                   let task = allTasks.first(where: { $0.id == droppedId }) else {
                 return false
             }
             
             if task.quadrant != quadrant {
+                // Provide haptic feedback
+                #if os(iOS)
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                #elseif os(macOS)
+                // macOS doesn't have haptic feedback, but we can use a system sound
+                NSSound.beep()
+                #endif
+                
                 Task {
                     await remindersManager.moveTask(task, to: quadrant)
                 }
@@ -198,7 +289,9 @@ struct QuadrantView: View {
             }
             return false
         } isTargeted: { targeted in
-            isTargeted = targeted
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isTargeted = targeted
+            }
         }
         .sheet(isPresented: $showingAddTask) {
             AddTaskView(quadrant: quadrant, remindersManager: remindersManager)
@@ -228,6 +321,12 @@ struct TaskCard: View {
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            // Drag Handle
+            Image(systemName: "line.3.horizontal")
+                .foregroundColor(.gray.opacity(0.4))
+                .font(.caption)
+                .padding(.top, 2)
+            
             // Checkbox
             Button(action: onToggleComplete) {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
