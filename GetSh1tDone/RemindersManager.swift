@@ -413,13 +413,83 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true) -> [TaskItem] {
-        if showCompleted {
-            // Show all tasks in quadrant, including completed ones
-            return tasks.filter { $0.quadrant == quadrant }
-        } else {
-            // Hide completed tasks
-            return tasks.filter { $0.quadrant == quadrant && !$0.isCompleted }
+    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true, showOnlyToday: Bool = false, showOnlyThisWeek: Bool = false) -> [TaskItem] {
+        var filteredTasks = tasks.filter { $0.quadrant == quadrant }
+        
+        // Filter by completion status
+        if !showCompleted {
+            filteredTasks = filteredTasks.filter { !$0.isCompleted }
+        }
+        
+        // Filter by time period tags
+        if showOnlyToday {
+            filteredTasks = filteredTasks.filter { task in
+                hasTimePeriodTag(task, tag: "#today")
+            }
+        } else if showOnlyThisWeek {
+            filteredTasks = filteredTasks.filter { task in
+                hasTimePeriodTag(task, tag: "#thisweek") || hasTimePeriodTag(task, tag: "#today")
+            }
+        }
+        
+        return filteredTasks
+    }
+    
+    private func hasTimePeriodTag(_ task: TaskItem, tag: String) -> Bool {
+        let allTags = task.tags + TaskItem.extractTags(from: task.notes)
+        let lowerTag = tag.lowercased()
+        return allTags.contains { $0.lowercased() == lowerTag }
+    }
+    
+    func setTimePeriodTag(_ task: TaskItem, tag: String) async {
+        if let reminder = task.reminder {
+            let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+            
+            // Get current notes and tags
+            let currentNotes = reminder.notes ?? ""
+            let currentHashtag = task.quadrant.hashtag
+            
+            // Extract existing tags, excluding time period tags
+            var existingTags = TaskItem.extractTags(from: currentNotes)
+            existingTags = existingTags.filter { tag in
+                !timePeriodTags.contains { $0.lowercased() == tag.lowercased() }
+            }
+            
+            // Add the new time period tag
+            existingTags.append(tag)
+            
+            // Rebuild notes: user notes + quadrant hashtag + tags
+            var userNotes = currentNotes
+                .replacingOccurrences(of: currentHashtag, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Remove all time period tags from user notes
+            for timeTag in timePeriodTags {
+                userNotes = userNotes.replacingOccurrences(of: timeTag, with: "", options: .caseInsensitive)
+                userNotes = userNotes.replacingOccurrences(of: timeTag.capitalized, with: "", options: .caseInsensitive)
+            }
+            userNotes = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            var updatedNotes = userNotes
+            if !updatedNotes.isEmpty {
+                updatedNotes += "\n\n"
+            }
+            updatedNotes += currentHashtag
+            if !existingTags.isEmpty {
+                updatedNotes += "\n" + existingTags.joined(separator: " ")
+            }
+            
+            reminder.notes = updatedNotes
+            
+            do {
+                try eventStore.save(reminder, commit: true)
+                print("✅ Set time period tag '\(tag)' for task '\(task.title)'")
+                await loadReminders()
+            } catch {
+                let errorMsg = "Error setting time period tag: \(error.localizedDescription)"
+                print(errorMsg)
+                lastError = errorMsg
+            }
         }
     }
     

@@ -1,21 +1,22 @@
 import SwiftUI
 
 enum PlanningPeriod: String, CaseIterable {
-    case day = "Day"
-    case week = "Week"
-    case fortnight = "Fortnight"
+    case today = "Today"
+    case thisWeek = "This Week"
+    case thisMonth = "This Month"
+    case thisQuarter = "This Quarter"
 }
 
 struct PlanningView: View {
     @ObservedObject var remindersManager: RemindersManager
-    @State private var selectedPeriod: PlanningPeriod = .day
+    @State private var selectedPeriod: PlanningPeriod = .today
     @State private var currentQuestionIndex = 0
     @State private var answers: [String: String] = [:]
     @State private var showingMatrix = false
     
     private var questions: [String] {
         switch selectedPeriod {
-        case .day:
+        case .today:
             return [
                 "What are the most urgent tasks that must be done today?",
                 "What important tasks will move you toward your goals today?",
@@ -23,7 +24,7 @@ struct PlanningView: View {
                 "What tasks are not urgent and can be scheduled for later?",
                 "What tasks should be eliminated or removed from your list?"
             ]
-        case .week:
+        case .thisWeek:
             return [
                 "What are your top 3 priorities for this week?",
                 "What urgent deadlines are coming up this week?",
@@ -31,13 +32,21 @@ struct PlanningView: View {
                 "What tasks can be delegated this week?",
                 "What can be scheduled for next week or later?"
             ]
-        case .fortnight:
+        case .thisMonth:
             return [
-                "What are your major goals for the next two weeks?",
-                "What important projects need to be started or advanced?",
-                "What urgent items need attention in the next two weeks?",
-                "What can be delegated or outsourced?",
-                "What should be removed from your list entirely?"
+                "What are your major goals for this month?",
+                "What important projects need to be started or advanced this month?",
+                "What urgent items need attention this month?",
+                "What can be delegated or outsourced this month?",
+                "What should be removed from your list entirely this month?"
+            ]
+        case .thisQuarter:
+            return [
+                "What are your strategic objectives for this quarter?",
+                "What major projects or initiatives need to be completed this quarter?",
+                "What urgent priorities require focus this quarter?",
+                "What can be delegated or outsourced this quarter?",
+                "What should be eliminated or deprioritized this quarter?"
             ]
         }
     }
@@ -120,7 +129,7 @@ struct PlanningView: View {
                     .padding()
                 }
             }
-            .navigationTitle("Plan Your \(selectedPeriod.rawValue)")
+            .navigationTitle("Goals: \(selectedPeriod.rawValue)")
             .sheet(isPresented: $showingMatrix) {
                 EisenhowerMatrixView()
                     .environmentObject(remindersManager)

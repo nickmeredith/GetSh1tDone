@@ -2,10 +2,30 @@ import SwiftUI
 
 struct PrioritiesView: View {
     @AppStorage("priorities") private var prioritiesData: Data = Data()
+    @EnvironmentObject var remindersManager: RemindersManager
     @State private var priorities: [Priority] = []
     @State private var showingAddPriority = false
     @State private var newPriorityText = ""
     @State private var lastReviewDate: Date?
+    @State private var selectedTimePeriod: TimePeriod = .today
+    @State private var showingEditTask: TaskItem?
+    @State private var showingTaskDetail: TaskItem?
+    
+    enum TimePeriod: String, CaseIterable {
+        case today = "Today"
+        case thisWeek = "This Week"
+        case thisMonth = "This Month"
+        case thisQuarter = "This Quarter"
+        
+        var tag: String {
+            switch self {
+            case .today: return "#today"
+            case .thisWeek: return "#thisweek"
+            case .thisMonth: return "#thismonth"
+            case .thisQuarter: return "#thisquarter"
+            }
+        }
+    }
     
     struct Priority: Identifiable, Codable, Equatable {
         var id = UUID()
@@ -16,91 +36,85 @@ struct PrioritiesView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Header
-                VStack(spacing: 8) {
-                    Text("Your 5 Priorities")
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
-                    if let lastReview = lastReviewDate {
-                        Text("Last reviewed: \(lastReview, style: .date)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("Set your top 5 priorities")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+            VStack(spacing: 0) {
+                // Time Period Tabs
+                Picker("Time Period", selection: $selectedTimePeriod) {
+                    ForEach(TimePeriod.allCases, id: \.self) { period in
+                        Text(period.rawValue).tag(period)
                     }
                 }
+                .pickerStyle(.segmented)
                 .padding()
                 
-                // Priorities List
-                if priorities.isEmpty {
+                // Tasks List for selected time period
+                let filteredTasks = getTasksForTimePeriod(selectedTimePeriod)
+                
+                if filteredTasks.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "star.fill")
+                        Image(systemName: "calendar")
                             .font(.system(size: 60))
-                            .foregroundColor(.yellow)
-                        Text("No priorities set")
+                            .foregroundColor(.secondary)
+                        Text("No tasks for \(selectedTimePeriod.rawValue)")
                             .font(.title2)
-                        Text("Add your top 5 priorities to help guide your task classification")
+                        Text("Add tasks with the \(selectedTimePeriod.tag) tag to see them here")
                             .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
                             .padding()
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(priorities) { priority in
-                            HStack {
-                                Text("\(priorities.firstIndex(where: { $0.id == priority.id })! + 1).")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 30)
-                                
-                                Text(priority.text)
-                                    .font(.body)
-                                
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
+                        ForEach(filteredTasks) { task in
+                            TaskRowView(
+                                task: task,
+                                onTap: {
+                                    showingTaskDetail = task
+                                },
+                                onEdit: {
+                                    showingEditTask = task
+                                },
+                                onDelete: {
+                                    Task {
+                                        await remindersManager.deleteTask(task)
+                                    }
+                                },
+                                onToggleComplete: {
+                                    Task {
+                                        await remindersManager.markTaskCompleted(task)
+                                    }
+                                }
+                            )
                         }
-                        .onDelete(perform: deletePriority)
                     }
                 }
-                
-                // Action Buttons
-                VStack(spacing: 12) {
-                    if priorities.count < 5 {
-                        Button(action: { showingAddPriority = true }) {
-                            Label("Add Priority", systemImage: "plus.circle.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    
-                    if !priorities.isEmpty {
-                        Button(action: reviewPriorities) {
-                            Label("Review Priorities", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.bordered)
-                    }
+            }
+            .navigationTitle("Plan")
+            .sheet(item: $showingEditTask) { task in
+                EditTaskView(task: task, remindersManager: remindersManager)
+            }
+            .sheet(item: $showingTaskDetail) { task in
+                TaskDetailView(task: task, remindersManager: remindersManager)
+            }
+        }
+    }
+    
+    private func getTasksForTimePeriod(_ period: TimePeriod) -> [TaskItem] {
+        let allTasks = remindersManager.tasks.filter { !$0.isCompleted }
+        let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+        
+        return allTasks.filter { task in
+            let allTags = task.tags + TaskItem.extractTags(from: task.notes)
+            let lowerTag = period.tag.lowercased()
+            
+            // For "This Week", include both #thisweek and #today
+            if period == .thisWeek {
+                return allTags.contains { tag in
+                    let lower = tag.lowercased()
+                    return lower == "#thisweek" || lower == "#today"
                 }
-                .padding()
             }
-            .navigationTitle("Priorities")
-            .sheet(isPresented: $showingAddPriority) {
-                AddPriorityView(
-                    newPriorityText: $newPriorityText,
-                    onSave: {
-                        addPriority()
-                    }
-                )
-            }
-            .onAppear {
-                loadPriorities()
-            }
-            .onChange(of: priorities) {
-                savePriorities()
-            }
+            
+            return allTags.contains { $0.lowercased() == lowerTag }
         }
     }
     
@@ -147,6 +161,87 @@ struct PrioritiesView: View {
         
         if let reviewDate = lastReviewDate {
             UserDefaults.standard.set(reviewDate, forKey: "lastPriorityReview")
+        }
+    }
+}
+
+struct TaskRowView: View {
+    let task: TaskItem
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onToggleComplete: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Checkbox
+            Button(action: onToggleComplete) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(task.isCompleted ? .green : .gray)
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            
+            // Task content
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.body)
+                    .foregroundColor(task.isCompleted ? .secondary : .primary)
+                    .strikethrough(task.isCompleted)
+                
+                // Quadrant badge
+                HStack(spacing: 6) {
+                    Text(task.quadrant.rawValue)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(quadrantColor.opacity(0.2))
+                        .foregroundColor(quadrantColor)
+                        .cornerRadius(4)
+                    
+                    // Tags
+                    if !task.tags.isEmpty {
+                        ForEach(task.tags.prefix(2), id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            HStack(spacing: 8) {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .foregroundColor(.blue)
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
+        }
+    }
+    
+    private var quadrantColor: Color {
+        switch task.quadrant {
+        case .doNow: return Color(red: 1.0, green: 0.4, blue: 0.4)
+        case .delegate: return Color(red: 1.0, green: 0.7, blue: 0.3)
+        case .schedule: return Color(red: 0.4, green: 0.6, blue: 1.0)
+        case .bin: return Color(red: 0.6, green: 0.6, blue: 0.6)
         }
     }
 }

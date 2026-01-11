@@ -12,6 +12,8 @@ struct EisenhowerMatrixView: View {
     @State private var showingError: String?
     @State private var showCompletedTasks = false
     @State private var expandedQuadrant: Quadrant?
+    @State private var showOnlyToday = false
+    @State private var showOnlyThisWeek = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -50,19 +52,60 @@ struct EisenhowerMatrixView: View {
                 
                 Spacer()
                 
-                // Toggle for completed tasks
+                // Filter toggles
                 HStack(spacing: 8) {
-                    Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Toggle("Show Completed", isOn: $showCompletedTasks)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+                    // Show Today toggle
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.caption2)
+                            .foregroundColor(showOnlyToday ? .blue : .secondary)
+                        Toggle("Today", isOn: $showOnlyToday)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .onChange(of: showOnlyToday) { newValue in
+                                if newValue {
+                                    showOnlyThisWeek = false
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(6)
+                    
+                    // Show This Week toggle
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.caption2)
+                            .foregroundColor(showOnlyThisWeek ? .blue : .secondary)
+                        Toggle("This Week", isOn: $showOnlyThisWeek)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .onChange(of: showOnlyThisWeek) { newValue in
+                                if newValue {
+                                    showOnlyToday = false
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(6)
+                    
+                    // Show Completed toggle
+                    HStack(spacing: 4) {
+                        Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Toggle("Completed", isOn: $showCompletedTasks)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(6)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(.systemBackground).opacity(0.8))
-                .cornerRadius(8)
                 
                 Button(action: {
                     Task {
@@ -83,10 +126,12 @@ struct EisenhowerMatrixView: View {
                         // Top Row
                         QuadrantView(
                             quadrant: .doNow,
-                            tasks: remindersManager.getTasksForQuadrant(.doNow, showCompleted: showCompletedTasks),
+                            tasks: remindersManager.getTasksForQuadrant(.doNow, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
+                            showOnlyToday: showOnlyToday,
+                            showOnlyThisWeek: showOnlyThisWeek,
                             onTaskTap: { task in
                                 showingTaskDetail = task
                             },
@@ -99,10 +144,12 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .schedule,
-                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks),
+                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
+                            showOnlyToday: showOnlyToday,
+                            showOnlyThisWeek: showOnlyThisWeek,
                             onTaskTap: { task in
                                 showingTaskDetail = task
                             },
@@ -118,10 +165,12 @@ struct EisenhowerMatrixView: View {
                         // Bottom Row
                         QuadrantView(
                             quadrant: .delegate,
-                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks),
+                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
+                            showOnlyToday: showOnlyToday,
+                            showOnlyThisWeek: showOnlyThisWeek,
                             onTaskTap: { task in
                                 showingTaskDetail = task
                             },
@@ -134,10 +183,12 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .bin,
-                            tasks: remindersManager.getTasksForQuadrant(.bin, showCompleted: showCompletedTasks),
+                            tasks: remindersManager.getTasksForQuadrant(.bin, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
+                            showOnlyToday: showOnlyToday,
+                            showOnlyThisWeek: showOnlyThisWeek,
                             onTaskTap: { task in
                                 showingTaskDetail = task
                             },
@@ -157,9 +208,11 @@ struct EisenhowerMatrixView: View {
             if let expanded = expandedQuadrant {
                 FullScreenQuadrantView(
                     quadrant: expanded,
-                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: showCompletedTasks),
+                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                     allTasks: remindersManager.tasks,
                     remindersManager: remindersManager,
+                    showOnlyToday: showOnlyToday,
+                    showOnlyThisWeek: showOnlyThisWeek,
                     onClose: {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             expandedQuadrant = nil
@@ -240,6 +293,8 @@ struct QuadrantView: View {
     let allTasks: [TaskItem]
     let geometry: GeometryProxy
     @ObservedObject var remindersManager: RemindersManager
+    let showOnlyToday: Bool
+    let showOnlyThisWeek: Bool
     let onTaskTap: (TaskItem) -> Void
     let onExpand: () -> Void
     
@@ -305,6 +360,16 @@ struct QuadrantView: View {
                                     Task {
                                         await remindersManager.markTaskCompleted(task)
                                     }
+                                },
+                                onSetToday: {
+                                    Task {
+                                        await remindersManager.setTimePeriodTag(task, tag: "#today")
+                                    }
+                                },
+                                onSetThisWeek: {
+                                    Task {
+                                        await remindersManager.setTimePeriodTag(task, tag: "#thisweek")
+                                    }
                                 }
                             )
                             .draggable(task.id) {
@@ -314,7 +379,9 @@ struct QuadrantView: View {
                                     onTap: {},
                                     onEdit: {},
                                     onDelete: {},
-                                    onToggleComplete: {}
+                                    onToggleComplete: {},
+                                    onSetToday: nil,
+                                    onSetThisWeek: nil
                                 )
                                 .opacity(0.6)
                                 .scaleEffect(0.9)
@@ -407,9 +474,16 @@ struct TaskCard: View {
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onToggleComplete: () -> Void
+    let onSetToday: (() -> Void)?
+    let onSetThisWeek: (() -> Void)?
     
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
+    @State private var swipeDirection: SwipeDirection = .none
+    
+    enum SwipeDirection {
+        case none, right, left
+    }
     
     // Swipe threshold - how far to swipe before completing
     private let swipeThreshold: CGFloat = 100
@@ -467,33 +541,84 @@ struct TaskCard: View {
                 .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
         )
         .offset(x: dragOffset)
+        .overlay(
+            // Visual feedback for swipes
+            Group {
+                if isDragging {
+                    if swipeDirection == .right {
+                        // Right swipe - set to today
+                        HStack {
+                            Spacer()
+                            Image(systemName: "calendar")
+                                .foregroundColor(.blue)
+                                .font(.title2)
+                                .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
+                                .padding(.trailing, 12)
+                        }
+                    } else if swipeDirection == .left {
+                        // Left swipe - set to this week
+                        HStack {
+                            Image(systemName: "calendar.badge.clock")
+                                .foregroundColor(.blue)
+                                .font(.title2)
+                                .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
+                                .padding(.leading, 12)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        )
         .gesture(
             DragGesture(minimumDistance: 20)
                 .onChanged { value in
-                    // Only respond to horizontal swipes (right direction)
+                    // Only respond to horizontal swipes
                     // If vertical movement is greater, don't interfere with scrolling
                     let horizontalMovement = abs(value.translation.width)
                     let verticalMovement = abs(value.translation.height)
                     
                     // Only activate if horizontal movement is significantly greater than vertical (2:1 ratio)
-                    if horizontalMovement > verticalMovement * 2 && value.translation.width > 0 {
-                        dragOffset = min(value.translation.width, swipeThreshold * 1.5)
-                        isDragging = true
+                    if horizontalMovement > verticalMovement * 2 {
+                        if value.translation.width > 0 {
+                            // Swiping right - set to today
+                            dragOffset = min(value.translation.width, swipeThreshold * 1.5)
+                            swipeDirection = .right
+                            isDragging = true
+                        } else if value.translation.width < 0 {
+                            // Swiping left - set to this week
+                            dragOffset = max(value.translation.width, -swipeThreshold * 1.5)
+                            swipeDirection = .left
+                            isDragging = true
+                        }
                     }
                 }
                 .onEnded { value in
-                    // If swiped far enough to the right, complete the task
-                    if value.translation.width > swipeThreshold && !task.isCompleted {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            dragOffset = 0
+                    if abs(value.translation.width) > swipeThreshold {
+                        if value.translation.width > 0 && swipeDirection == .right {
+                            // Swiped right - set to today
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                dragOffset = 0
+                            }
+                            onSetToday?()
+                            
+                            // Haptic feedback
+                            #if os(iOS)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            #endif
+                        } else if value.translation.width < 0 && swipeDirection == .left {
+                            // Swiped left - set to this week
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                dragOffset = 0
+                            }
+                            onSetThisWeek?()
+                            
+                            // Haptic feedback
+                            #if os(iOS)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            #endif
                         }
-                        onToggleComplete()
-                        
-                        // Haptic feedback
-                        #if os(iOS)
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        #endif
                     } else {
                         // Spring back to original position
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -501,6 +626,7 @@ struct TaskCard: View {
                         }
                     }
                     isDragging = false
+                    swipeDirection = .none
                 }
         )
         .onTapGesture {
@@ -704,6 +830,45 @@ struct TaskDetailView: View {
                         .frame(height: 130) // Increased from 100 to show 2 more lines
                 }
                 
+                // Time Period Selection - moved right after notes
+                Section("Time Period") {
+                    let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+                    let currentTimePeriod = timePeriodTags.first { tag in
+                        let allTags = task.tags + TaskItem.extractTags(from: task.notes)
+                        return allTags.contains { $0.lowercased() == tag.lowercased() }
+                    }
+                    
+                    Picker("When to do", selection: Binding(
+                        get: { currentTimePeriod ?? "" },
+                        set: { selectedTag in
+                            // Remove existing time period tags
+                            var updatedTags = tags.components(separatedBy: " ")
+                                .filter { $0.hasPrefix("#") }
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                            
+                            // Remove all time period tags
+                            updatedTags = updatedTags.filter { tag in
+                                !timePeriodTags.contains { $0.lowercased() == tag.lowercased() }
+                            }
+                            
+                            // Add selected time period tag if not empty
+                            if !selectedTag.isEmpty {
+                                updatedTags.append(selectedTag)
+                            }
+                            
+                            tags = updatedTags.joined(separator: " ")
+                        }
+                    )) {
+                        Text("None").tag("")
+                        Text("Today").tag("#today")
+                        Text("This Week").tag("#thisweek")
+                        Text("This Month").tag("#thismonth")
+                        Text("This Quarter").tag("#thisquarter")
+                    }
+                    .pickerStyle(.menu)
+                }
+                
                 Section("Tags") {
                     TextField("Enter tags (e.g., #urgent #important)", text: $tags)
                         .autocapitalization(.none)
@@ -788,6 +953,8 @@ struct FullScreenQuadrantView: View {
     let tasks: [TaskItem]
     let allTasks: [TaskItem]
     @ObservedObject var remindersManager: RemindersManager
+    let showOnlyToday: Bool
+    let showOnlyThisWeek: Bool
     let onClose: () -> Void
     let onTaskTap: (TaskItem) -> Void
     
@@ -859,6 +1026,16 @@ struct FullScreenQuadrantView: View {
                                     Task {
                                         await remindersManager.markTaskCompleted(task)
                                     }
+                                },
+                                onSetToday: {
+                                    Task {
+                                        await remindersManager.setTimePeriodTag(task, tag: "#today")
+                                    }
+                                },
+                                onSetThisWeek: {
+                                    Task {
+                                        await remindersManager.setTimePeriodTag(task, tag: "#thisweek")
+                                    }
                                 }
                             )
                             .draggable(task.id) {
@@ -868,7 +1045,9 @@ struct FullScreenQuadrantView: View {
                                     onTap: {},
                                     onEdit: {},
                                     onDelete: {},
-                                    onToggleComplete: {}
+                                    onToggleComplete: {},
+                                    onSetToday: nil,
+                                    onSetThisWeek: nil
                                 )
                                 .opacity(0.6)
                                 .scaleEffect(0.9)

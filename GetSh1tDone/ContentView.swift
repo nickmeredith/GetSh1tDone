@@ -15,7 +15,7 @@ struct ContentView: View {
             
             PlanningView(remindersManager: remindersManager)
                 .tabItem {
-                    Label("Plan", systemImage: "calendar")
+                    Label("Goals", systemImage: "target")
                 }
                 .tag(1)
             
@@ -26,8 +26,9 @@ struct ContentView: View {
                 .tag(2)
             
             PrioritiesView()
+                .environmentObject(remindersManager)
                 .tabItem {
-                    Label("Priorities", systemImage: "star")
+                    Label("Plan", systemImage: "calendar")
                 }
                 .tag(3)
         }
