@@ -329,7 +329,7 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func updateTask(_ task: TaskItem, title: String?, notes: String?) async {
+    func updateTask(_ task: TaskItem, title: String?, notes: String?, tags: [String]? = nil, dueDate: Date? = nil) async {
         if let reminder = task.reminder {
             // Ensure reminder is in iCloud calendar if possible
             if let iCloudCalendar = getiCloudRemindersCalendar(), reminder.calendar != iCloudCalendar {
@@ -340,6 +340,28 @@ class RemindersManager: ObservableObject {
             // Update title if provided
             if let title = title, !title.isEmpty {
                 reminder.title = title
+            }
+            
+            // Update due date - if provided, set it; if explicitly nil (from TaskDetailView), clear it
+            // We check if tags was provided to know this is from TaskDetailView (which always provides dueDate)
+            if tags != nil {
+                // This is from TaskDetailView - always update due date
+                if let dueDate = dueDate {
+                    let calendar = Calendar.current
+                    let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
+                    reminder.dueDateComponents = components
+                    print("📅 Updated due date: \(dueDate)")
+                } else {
+                    // Clear the due date
+                    reminder.dueDateComponents = nil
+                    print("📅 Cleared due date")
+                }
+            } else if let dueDate = dueDate {
+                // This is from another view - only set if provided
+                let calendar = Calendar.current
+                let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
+                reminder.dueDateComponents = components
+                print("📅 Updated due date: \(dueDate)")
             }
             
             // Update notes, preserving quadrant hashtag and tags
@@ -357,9 +379,10 @@ class RemindersManager: ObservableObject {
                     updatedNotes += currentHashtag
                 }
                 
-                // Add tags if they exist
-                if !task.tags.isEmpty {
-                    updatedNotes += "\n" + task.tags.joined(separator: " ")
+                // Add tags if provided, otherwise use existing tags
+                let tagsToAdd = tags ?? task.tags
+                if !tagsToAdd.isEmpty {
+                    updatedNotes += "\n" + tagsToAdd.joined(separator: " ")
                 }
                 
                 reminder.notes = updatedNotes

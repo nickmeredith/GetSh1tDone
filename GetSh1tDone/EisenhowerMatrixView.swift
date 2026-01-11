@@ -648,7 +648,7 @@ struct EditTaskView: View {
                         updatedTask.tags = tagArray
                         
                         Task {
-                            await remindersManager.updateTask(updatedTask, title: title, notes: notes)
+                            await remindersManager.updateTask(updatedTask, title: title, notes: notes, tags: tagArray)
                             dismiss()
                         }
                     }
@@ -668,12 +668,31 @@ struct TaskDetailView: View {
     
     @State private var title: String
     @State private var notes: String
+    @State private var tags: String
+    @State private var dueDate: Date?
+    @State private var hasDueDate: Bool
     
     init(task: TaskItem, remindersManager: RemindersManager) {
         self.task = task
         self.remindersManager = remindersManager
         _title = State(initialValue: task.title)
         _notes = State(initialValue: task.notes.replacingOccurrences(of: task.quadrant.hashtag, with: "").trimmingCharacters(in: .whitespacesAndNewlines))
+        
+        // Extract all tags from notes and combine with task.tags
+        let allTagsFromNotes = TaskItem.extractTags(from: task.notes)
+        let combinedTags = Array(Set(task.tags + allTagsFromNotes)).sorted()
+        _tags = State(initialValue: combinedTags.joined(separator: " "))
+        
+        // Initialize due date
+        if let reminder = task.reminder,
+           let dueDateComponents = reminder.dueDateComponents,
+           let date = Calendar.current.date(from: dueDateComponents) {
+            _dueDate = State(initialValue: date)
+            _hasDueDate = State(initialValue: true)
+        } else {
+            _dueDate = State(initialValue: Date())
+            _hasDueDate = State(initialValue: false)
+        }
     }
     
     var body: some View {
@@ -682,24 +701,42 @@ struct TaskDetailView: View {
                 Section("Task Details") {
                     TextField("Title", text: $title)
                     TextEditor(text: $notes)
-                        .frame(height: 100)
+                        .frame(height: 130) // Increased from 100 to show 2 more lines
                 }
                 
                 Section("Tags") {
-                    if task.tags.isEmpty {
-                        Text("No tags")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    } else {
-                        ForEach(task.tags, id: \.self) { tag in
-                            HStack(spacing: 6) {
-                                Image(systemName: "tag.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.blue)
-                                Text(tag.replacingOccurrences(of: "#", with: ""))
-                                    .font(.body)
+                    TextField("Enter tags (e.g., #urgent #important)", text: $tags)
+                        .autocapitalization(.none)
+                }
+                
+                // Date and Time section
+                Section("Date & Time") {
+                    Toggle("Set Due Date", isOn: Binding(
+                        get: { hasDueDate },
+                        set: { newValue in
+                            hasDueDate = newValue
+                            if newValue && dueDate == nil {
+                                dueDate = Date()
                             }
                         }
+                    ))
+                    
+                    if hasDueDate {
+                        DatePicker("Date", selection: Binding(
+                            get: { dueDate ?? Date() },
+                            set: { dueDate = $0 }
+                        ), displayedComponents: [.date])
+                        .datePickerStyle(.compact)
+                        
+                        DatePicker("Time", selection: Binding(
+                            get: { dueDate ?? Date() },
+                            set: { dueDate = $0 }
+                        ), displayedComponents: [.hourAndMinute])
+                        .datePickerStyle(.compact)
+                    } else {
+                        Text("No due date set")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
                     }
                 }
                 
@@ -720,8 +757,20 @@ struct TaskDetailView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        // Parse tags from the text field
+                        let tagArray = tags.components(separatedBy: " ")
+                            .filter { $0.hasPrefix("#") }
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        
                         Task {
-                            await remindersManager.updateTask(task, title: title, notes: notes)
+                            await remindersManager.updateTask(
+                                task,
+                                title: title,
+                                notes: notes,
+                                tags: tagArray,
+                                dueDate: hasDueDate ? (dueDate ?? Date()) : nil
+                            )
                             dismiss()
                         }
                     }
