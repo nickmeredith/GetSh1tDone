@@ -11,15 +11,42 @@ struct EisenhowerMatrixView: View {
     @State private var showingTaskDetail: TaskItem?
     @State private var showingError: String?
     @State private var showCompletedTasks = false
+    @State private var expandedQuadrant: Quadrant?
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("GetSh1tDone")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .padding()
+                // Logo - Productivity themed
+                HStack(spacing: 6) {
+                    ZStack {
+                        // Background circle with gradient
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 40, height: 40)
+                            .shadow(color: Color.blue.opacity(0.3), radius: 4, x: 0, y: 2)
+                        
+                        // Checkmark icon
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                    }
+                    
+                    // Lightning bolt for action/speed
+                    ZStack {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.orange)
+                            .offset(x: -6, y: 0)
+                    }
+                }
+                .padding(.leading)
                 
                 Spacer()
                 
@@ -62,6 +89,11 @@ struct EisenhowerMatrixView: View {
                             remindersManager: remindersManager,
                             onTaskTap: { task in
                                 showingTaskDetail = task
+                            },
+                            onExpand: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    expandedQuadrant = .doNow
+                                }
                             }
                         )
                         
@@ -73,6 +105,11 @@ struct EisenhowerMatrixView: View {
                             remindersManager: remindersManager,
                             onTaskTap: { task in
                                 showingTaskDetail = task
+                            },
+                            onExpand: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    expandedQuadrant = .schedule
+                                }
                             }
                         )
                     }
@@ -87,6 +124,11 @@ struct EisenhowerMatrixView: View {
                             remindersManager: remindersManager,
                             onTaskTap: { task in
                                 showingTaskDetail = task
+                            },
+                            onExpand: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    expandedQuadrant = .delegate
+                                }
                             }
                         )
                         
@@ -98,6 +140,11 @@ struct EisenhowerMatrixView: View {
                             remindersManager: remindersManager,
                             onTaskTap: { task in
                                 showingTaskDetail = task
+                            },
+                            onExpand: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    expandedQuadrant = .bin
+                                }
                             }
                         )
                     }
@@ -105,6 +152,28 @@ struct EisenhowerMatrixView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .overlay {
+            // Full-screen quadrant view
+            if let expanded = expandedQuadrant {
+                FullScreenQuadrantView(
+                    quadrant: expanded,
+                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: showCompletedTasks),
+                    allTasks: remindersManager.tasks,
+                    remindersManager: remindersManager,
+                    onClose: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            expandedQuadrant = nil
+                        }
+                    },
+                    onTaskTap: { task in
+                        showingTaskDetail = task
+                    }
+                )
+                .transition(.opacity.combined(with: .scale))
+                .zIndex(1000)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: expandedQuadrant)
         .sheet(item: $showingTaskDetail) { task in
             TaskDetailView(task: task, remindersManager: remindersManager)
         }
@@ -172,6 +241,7 @@ struct QuadrantView: View {
     let geometry: GeometryProxy
     @ObservedObject var remindersManager: RemindersManager
     let onTaskTap: (TaskItem) -> Void
+    let onExpand: () -> Void
     
     @State private var isTargeted = false
     @State private var showingAddTask = false
@@ -198,6 +268,17 @@ struct QuadrantView: View {
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundColor(quadrantColor)
+                    
+                    // Expand button
+                    Button(action: onExpand) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 14))
+                            .foregroundColor(quadrantColor)
+                            .padding(6)
+                            .background(quadrantColor.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -268,10 +349,10 @@ struct QuadrantView: View {
         .clipped()
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isTargeted ? quadrantColor.opacity(0.15) : Color(red: 1.0, green: 0.95, blue: 0.95))
+                .fill(isTargeted ? quadrantColor.opacity(0.2) : quadrantColor.opacity(0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(isTargeted ? quadrantColor : Color.clear, lineWidth: isTargeted ? 3 : 0)
+                        .stroke(isTargeted ? quadrantColor : quadrantColor.opacity(0.3), lineWidth: isTargeted ? 3 : 1)
                 )
         )
         .dropDestination(for: String.self) { droppedIds, location in
@@ -311,10 +392,10 @@ struct QuadrantView: View {
     
     private var quadrantColor: Color {
         switch quadrant {
-        case .doNow: return Color(red: 0.8, green: 0.2, blue: 0.2)
-        case .delegate: return .orange
-        case .schedule: return .blue
-        case .bin: return .gray
+        case .doNow: return Color(red: 1.0, green: 0.4, blue: 0.4) // Lighter red
+        case .delegate: return Color(red: 1.0, green: 0.7, blue: 0.3) // Lighter orange
+        case .schedule: return Color(red: 0.4, green: 0.6, blue: 1.0) // Lighter blue
+        case .bin: return Color(red: 0.6, green: 0.6, blue: 0.6) // Lighter gray
         }
     }
 }
@@ -387,11 +468,16 @@ struct TaskCard: View {
         )
         .offset(x: dragOffset)
         .gesture(
-            DragGesture()
+            DragGesture(minimumDistance: 20)
                 .onChanged { value in
-                    // Only allow swiping right (positive translation)
-                    if value.translation.width > 0 {
-                        dragOffset = value.translation.width
+                    // Only respond to horizontal swipes (right direction)
+                    // If vertical movement is greater, don't interfere with scrolling
+                    let horizontalMovement = abs(value.translation.width)
+                    let verticalMovement = abs(value.translation.height)
+                    
+                    // Only activate if horizontal movement is significantly greater than vertical (2:1 ratio)
+                    if horizontalMovement > verticalMovement * 2 && value.translation.width > 0 {
+                        dragOffset = min(value.translation.width, swipeThreshold * 1.5)
                         isDragging = true
                     }
                 }
@@ -645,6 +731,132 @@ struct TaskDetailView: View {
         #if os(macOS)
         .frame(width: 500, height: 400)
         #endif
+    }
+}
+
+struct FullScreenQuadrantView: View {
+    let quadrant: Quadrant
+    let tasks: [TaskItem]
+    let allTasks: [TaskItem]
+    @ObservedObject var remindersManager: RemindersManager
+    let onClose: () -> Void
+    let onTaskTap: (TaskItem) -> Void
+    
+    @State private var showingAddTask = false
+    @State private var showingEditTask: TaskItem?
+    
+    private var quadrantColor: Color {
+        switch quadrant {
+        case .doNow: return Color(red: 1.0, green: 0.4, blue: 0.4) // Lighter red
+        case .delegate: return Color(red: 1.0, green: 0.7, blue: 0.3) // Lighter orange
+        case .schedule: return Color(red: 0.4, green: 0.6, blue: 1.0) // Lighter blue
+        case .bin: return Color(red: 0.6, green: 0.6, blue: 0.6) // Lighter gray
+        }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header with close button
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(quadrant.rawValue)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(quadrantColor)
+                        Text(quadrant.description)
+                            .font(.subheadline)
+                            .foregroundColor(quadrantColor.opacity(0.8))
+                    }
+                    
+                    Spacer()
+                    
+                    Text("\(tasks.count) tasks")
+                        .font(.headline)
+                        .foregroundColor(quadrantColor)
+                    
+                    // Close button
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 16)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(quadrantColor.opacity(0.1))
+                
+                // Tasks list
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 8) {
+                        ForEach(tasks) { task in
+                            TaskCard(
+                                task: task,
+                                quadrantColor: quadrantColor,
+                                onTap: { onTaskTap(task) },
+                                onEdit: { showingEditTask = task },
+                                onDelete: {
+                                    Task {
+                                        await remindersManager.deleteTask(task)
+                                    }
+                                },
+                                onToggleComplete: {
+                                    Task {
+                                        await remindersManager.markTaskCompleted(task)
+                                    }
+                                }
+                            )
+                            .draggable(task.id) {
+                                TaskCard(
+                                    task: task,
+                                    quadrantColor: quadrantColor,
+                                    onTap: {},
+                                    onEdit: {},
+                                    onDelete: {},
+                                    onToggleComplete: {}
+                                )
+                                .opacity(0.6)
+                                .scaleEffect(0.9)
+                                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                            }
+                        }
+                        
+                        // Add Task Button
+                        Button(action: { showingAddTask = true }) {
+                            HStack {
+                                Image(systemName: "plus")
+                                    .foregroundColor(quadrantColor)
+                                Text("Add Task")
+                                    .foregroundColor(quadrantColor)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                    .foregroundColor(quadrantColor.opacity(0.5))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
+                    }
+                    .padding(16)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .sheet(isPresented: $showingAddTask) {
+            AddTaskView(quadrant: quadrant, remindersManager: remindersManager)
+        }
+        .sheet(item: $showingEditTask) { task in
+            EditTaskView(task: task, remindersManager: remindersManager)
+        }
     }
 }
 
