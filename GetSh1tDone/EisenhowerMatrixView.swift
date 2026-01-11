@@ -591,6 +591,24 @@ struct TaskDetailView: View {
                         .frame(height: 100)
                 }
                 
+                Section("Tags") {
+                    if task.tags.isEmpty {
+                        Text("No tags")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    } else {
+                        ForEach(task.tags, id: \.self) { tag in
+                            HStack(spacing: 6) {
+                                Image(systemName: "tag.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.blue)
+                                Text(tag.replacingOccurrences(of: "#", with: ""))
+                                    .font(.body)
+                            }
+                        }
+                    }
+                }
+                
                 Section("Quadrant") {
                     Text("Current: \(task.quadrant.rawValue)")
                     Text(task.quadrant.description)

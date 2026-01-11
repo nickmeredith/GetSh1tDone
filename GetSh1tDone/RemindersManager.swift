@@ -67,48 +67,168 @@ class RemindersManager: ObservableObject {
             isAuthorized = currentStatus == .authorized
         }
         
-        guard isAuthorized else { return }
+        print("🔐 Authorization status: \(currentStatus.rawValue), Authorized: \(isAuthorized)")
+        
+        guard isAuthorized else {
+            print("❌ Not authorized to load reminders. Status: \(currentStatus.rawValue)")
+            return
+        }
         
         isLoading = true
         defer { isLoading = false }
         
+        // Get all reminder calendars to ensure we're loading from all sources
+        let calendars = eventStore.calendars(for: .reminder)
+        print("📅 Found \(calendars.count) reminder calendars")
+        for calendar in calendars {
+            print("   - \(calendar.title) (Source: \(calendar.source.title))")
+        }
+        
+        // Use nil to get reminders from all calendars
         let predicate = eventStore.predicateForReminders(in: nil)
         
         // Use withCheckedContinuation to wrap the completion handler API
         let reminders = await withCheckedContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+                let reminderList = reminders ?? []
+                print("📥 Fetched \(reminderList.count) reminders from EventKit")
+                continuation.resume(returning: reminderList)
             }
         }
         
         var loadedTasks: [TaskItem] = []
         
-        for reminder in reminders {
-            // Include all reminders, including completed ones
-            // Determine quadrant from hashtags in notes
+        print("📋 Loading \(reminders.count) reminders...")
+        
+        // Filter out completed reminders
+        let incompleteReminders = reminders.filter { !$0.isCompleted }
+        print("📋 Found \(incompleteReminders.count) incomplete reminders (filtered out \(reminders.count - incompleteReminders.count) completed)")
+        
+        var quadrantCounts: [Quadrant: Int] = [.doNow: 0, .delegate: 0, .schedule: 0, .bin: 0]
+        var sampleReminders: [String] = []
+        
+        for (index, reminder) in incompleteReminders.enumerated() {
+            // Only process non-completed reminders
+            // Determine quadrant from tags (priority: DoNow > Delegate > Schedule > Bin)
             let quadrant = extractQuadrant(from: reminder)
-            var task = TaskItem(reminder: reminder, quadrant: quadrant)
-            // Extract tags from notes (excluding quadrant hashtags)
-            task.tags = TaskItem.extractTags(from: reminder.notes ?? "")
+            let task = TaskItem(reminder: reminder, quadrant: quadrant)
+            
+            quadrantCounts[quadrant, default: 0] += 1
+            
+            // Collect sample reminders for debugging (first 10)
+            if index < 10 {
+                let notes = reminder.notes ?? ""
+                let notesPreview = notes.isEmpty ? "(empty)" : String(notes.prefix(100))
+                sampleReminders.append("'\(reminder.title ?? "")' → \(quadrant.rawValue) | Notes: \(notesPreview)")
+            }
+            
+            // Debug: Show tags found (tags are now extracted in TaskItem.init)
+            if !task.tags.isEmpty {
+                print("   📌 Other tags found for '\(reminder.title ?? "")': \(task.tags.joined(separator: ", "))")
+            }
+            
             loadedTasks.append(task)
+        }
+        
+        print("\n📊 SUMMARY:")
+        print("✅ Loaded \(loadedTasks.count) tasks")
+        print("   - Do Now: \(quadrantCounts[.doNow] ?? 0)")
+        print("   - Delegate: \(quadrantCounts[.delegate] ?? 0)")
+        print("   - Schedule: \(quadrantCounts[.schedule] ?? 0)")
+        print("   - Bin: \(quadrantCounts[.bin] ?? 0)")
+        print("\n📝 Sample reminders (first 10):")
+        for sample in sampleReminders {
+            print("   \(sample)")
         }
         
         tasks = loadedTasks
     }
     
     private func extractQuadrant(from reminder: EKReminder) -> Quadrant {
-        let notes = reminder.notes ?? ""
         let title = reminder.title ?? ""
+        let notes = reminder.notes ?? ""
+        let calendarName = reminder.calendar?.title ?? ""
         
-        // Check for hashtags in notes or title
-        if notes.contains("#DoNow") || title.contains("#DoNow") {
-            return .doNow
-        } else if notes.contains("#Delegate") || title.contains("#Delegate") {
-            return .delegate
-        } else if notes.contains("#Schedule") || title.contains("#Schedule") {
-            return .schedule
-        } else if notes.contains("#Bin") || title.contains("#Bin") {
-            return .bin
+        // Combine notes, title, and calendar name for searching (hashtags can appear in any)
+        let combinedText = "\(notes) \(title) \(calendarName)"
+        let lowercased = combinedText.lowercased()
+        
+        // Check for each quadrant hashtag using flexible patterns
+        // Priority order: DoNow > Delegate > Schedule > Bin
+        // If multiple quadrant tags exist, uses priority order (first match wins)
+        let quadrantChecks: [(String, Quadrant)] = [
+            ("donow", .doNow),        // Highest priority
+            ("delegate", .delegate),
+            ("schedule", .schedule),
+            ("bin", .bin)             // Lowest priority
+        ]
+        
+        // First, try simple contains check (most permissive)
+        // This catches: #DoNow, #donow, ##DoNow, # #DoNow, etc.
+        for (tagText, quadrant) in quadrantChecks {
+            // Check for the tag text after a # (with or without spaces/hashes)
+            // This is very permissive and will match:
+            // - #donow, #DoNow, #DONOW
+            // - ##donow, ###donow
+            // - # #donow, #  #donow
+            // - # donow, #  donow
+            // - Anywhere in the text
+            
+            // Simple check: look for # followed by the tag text (case-insensitive)
+            // We'll check multiple variations
+            let searchPatterns = [
+                "#\(tagText)",           // #donow
+                "##\(tagText)",          // ##donow
+                "# \(tagText)",          // # donow
+                "# #\(tagText)",         // # #donow
+                "## \(tagText)",         // ## donow
+                "#  \(tagText)",         // #  donow
+                "#  #\(tagText)",        // #  #donow
+                "#\(tagText.capitalized)", // #Donow
+                "#\(tagText.uppercased())" // #DONOW
+            ]
+            
+            for pattern in searchPatterns {
+                if lowercased.contains(pattern.lowercased()) {
+                    print("✅ Found \(tagText) hashtag in reminder: '\(title)'")
+                    print("   Matched: '\(pattern)'")
+                    print("   Notes: '\(notes.prefix(100))'")
+                    print("   Calendar: '\(calendarName)'")
+                    print("   → Assigned to quadrant: \(quadrant.rawValue)")
+                    return quadrant
+                }
+            }
+            
+            // Also try regex for more complex patterns
+            // Pattern: one or more #, optional spaces, then tag text
+            let regexPattern = "#+\\s*" + tagText
+            if let regex = try? NSRegularExpression(pattern: regexPattern, options: .caseInsensitive) {
+                let range = NSRange(lowercased.startIndex..., in: lowercased)
+                if regex.firstMatch(in: lowercased, options: [], range: range) != nil {
+                    print("✅ Found \(tagText) hashtag (regex) in reminder: '\(title)'")
+                    print("   Notes: '\(notes.prefix(100))'")
+                    print("   Calendar: '\(calendarName)'")
+                    print("   → Assigned to quadrant: \(quadrant.rawValue)")
+                    return quadrant
+                }
+            }
+        }
+        
+        // Debug: Print reminder details if no hashtag found (only for first few to avoid spam)
+        // But always log if notes are not empty (might have tags we're missing)
+        if notes.isEmpty {
+            // Only log occasionally for empty notes to avoid spam
+            if tasks.count < 5 || tasks.count % 50 == 0 {
+                print("⚠️ No quadrant hashtag found in reminder: '\(title)'")
+                print("   Notes: (empty)")
+                print("   Calendar: '\(calendarName)'")
+            }
+        } else {
+            // Always log if notes exist but no tag found - might indicate a parsing issue
+            print("⚠️ No quadrant hashtag found in reminder: '\(title)'")
+            print("   Notes: '\(notes.prefix(200))'")
+            print("   Calendar: '\(calendarName)'")
+            print("   Lowercased combined: '\(lowercased.prefix(300))'")
         }
         
         // Default to Schedule if no hashtag found
@@ -127,28 +247,44 @@ class RemindersManager: ObservableObject {
         // Preserve existing notes and tags, just update quadrant hashtag
         var notes = reminder.notes ?? ""
         
-        // Remove old quadrant hashtags
-        Quadrant.allCases.forEach { q in
-            notes = notes.replacingOccurrences(of: q.hashtag, with: "")
+        // Remove old quadrant hashtags from notes
+        let oldQuadrantTags = Quadrant.allCases.map { $0.hashtag.lowercased() }
+        let lines = notes.components(separatedBy: .newlines)
+        var cleanedLines: [String] = []
+        
+        for line in lines {
+            var cleanedLine = line
+            // Remove quadrant hashtags from this line (case-insensitive)
+            for oldTag in oldQuadrantTags {
+                let patterns = [
+                    "#+\\s*" + oldTag.replacingOccurrences(of: "#", with: "") + "\\b",
+                    "#\\s+#+\\s*" + oldTag.replacingOccurrences(of: "#", with: "") + "\\b"
+                ]
+                for pattern in patterns {
+                    if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                        let range = NSRange(cleanedLine.startIndex..., in: cleanedLine)
+                        cleanedLine = regex.stringByReplacingMatches(in: cleanedLine, options: [], range: range, withTemplate: "")
+                    }
+                }
+            }
+            // Also remove simple variations
+            for oldTag in ["#DoNow", "#Delegate", "#Schedule", "#Bin", "##DoNow", "##Delegate", "##Schedule", "##Bin", "# #DoNow", "# #Delegate", "# #Schedule", "# #Bin"] {
+                cleanedLine = cleanedLine.replacingOccurrences(of: oldTag, with: "", options: .caseInsensitive)
+            }
+            cleanedLine = cleanedLine.trimmingCharacters(in: .whitespaces)
+            if !cleanedLine.isEmpty {
+                cleanedLines.append(cleanedLine)
+            }
         }
         
-        // Extract and preserve tags (excluding quadrant hashtags)
-        let existingTags = TaskItem.extractTags(from: notes)
-        notes = notes.replacingOccurrences(of: "#", with: "")
-            .replacingOccurrences(of: "DoNow", with: "")
-            .replacingOccurrences(of: "Delegate", with: "")
-            .replacingOccurrences(of: "Schedule", with: "")
-            .replacingOccurrences(of: "Bin", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Rebuild notes: original notes + quadrant hashtag + tags
-        var finalNotes = notes
+        // Rebuild notes: cleaned notes + quadrant hashtag + other tags
+        var finalNotes = cleanedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         if !finalNotes.isEmpty {
             finalNotes += "\n\n"
         }
         finalNotes += quadrant.hashtag
-        if !existingTags.isEmpty {
-            finalNotes += "\n" + existingTags.joined(separator: " ")
+        if !task.tags.isEmpty {
+            finalNotes += "\n" + task.tags.joined(separator: " ")
         }
         
         reminder.notes = finalNotes

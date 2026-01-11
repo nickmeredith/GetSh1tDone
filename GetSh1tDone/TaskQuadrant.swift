@@ -70,19 +70,25 @@ struct TaskItem: Identifiable, Equatable {
     }
     
     static func extractTags(from notes: String) -> [String] {
+        // Extract all hashtags, handling variations like ##tag, # #tag, etc.
+        let normalized = notes
+            .replacingOccurrences(of: "##", with: "#")  // Fix double hashes
+            .replacingOccurrences(of: "# #", with: "#")  // Fix space before hash
+        
         let tagPattern = #"#\w+"#
         let regex = try? NSRegularExpression(pattern: tagPattern, options: [])
-        let range = NSRange(notes.startIndex..., in: notes)
-        let matches = regex?.matches(in: notes, options: [], range: range) ?? []
+        let range = NSRange(normalized.startIndex..., in: normalized)
+        let matches = regex?.matches(in: normalized, options: [], range: range) ?? []
         
-        // Quadrant hashtags that should be excluded
-        let quadrantTags = ["#DoNow", "#Delegate", "#Schedule", "#Bin"]
+        // Quadrant hashtags that should be excluded (case-insensitive)
+        let quadrantTags = ["#donow", "#delegate", "#schedule", "#bin"]
         
         return matches.compactMap { match in
-            guard let range = Range(match.range, in: notes) else { return nil }
-            let tag = String(notes[range])
-            // Exclude quadrant hashtags
-            return quadrantTags.contains(tag) ? nil : tag
+            guard let range = Range(match.range, in: normalized) else { return nil }
+            let tag = String(normalized[range])
+            // Exclude quadrant hashtags (case-insensitive comparison)
+            let lowerTag = tag.lowercased()
+            return quadrantTags.contains(lowerTag) ? nil : tag
         }
     }
 }
