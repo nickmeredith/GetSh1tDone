@@ -66,8 +66,8 @@ struct EisenhowerMatrixView: View {
                         )
                         
                         QuadrantView(
-                            quadrant: .delegate,
-                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks),
+                            quadrant: .schedule,
+                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -80,8 +80,8 @@ struct EisenhowerMatrixView: View {
                     HStack(spacing: 0) {
                         // Bottom Row
                         QuadrantView(
-                            quadrant: .schedule,
-                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks),
+                            quadrant: .delegate,
+                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -103,6 +103,7 @@ struct EisenhowerMatrixView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .sheet(item: $showingTaskDetail) { task in
             TaskDetailView(task: task, remindersManager: remindersManager)
@@ -177,87 +178,94 @@ struct QuadrantView: View {
     @State private var showingEditTask: TaskItem?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(quadrant.rawValue)
+        GeometryReader { quadrantGeometry in
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(quadrant.rawValue)
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(quadrantColor)
+                        Text(quadrant.description)
+                            .font(.caption)
+                            .foregroundColor(quadrantColor.opacity(0.8))
+                    }
+                    
+                    Spacer()
+                    
+                    Text("\(tasks.count)")
                         .font(.headline)
-                        .fontWeight(.bold)
+                        .fontWeight(.semibold)
                         .foregroundColor(quadrantColor)
-                    Text(quadrant.description)
-                        .font(.caption)
-                        .foregroundColor(quadrantColor.opacity(0.8))
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(quadrantColor.opacity(0.1))
                 
-                Spacer()
+                // Tasks - ScrollView with calculated height
+                let headerHeight: CGFloat = 60 // Approximate header height
+                let availableHeight = quadrantGeometry.size.height - headerHeight
                 
-                Text("\(tasks.count)")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(quadrantColor)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(quadrantColor.opacity(0.1))
-            
-            // Tasks
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(tasks) { task in
-                        TaskCard(
-                            task: task,
-                            quadrantColor: quadrantColor,
-                            onTap: { onTaskTap(task) },
-                            onEdit: { showingEditTask = task },
-                            onDelete: {
-                                Task {
-                                    await remindersManager.deleteTask(task)
-                                }
-                            },
-                            onToggleComplete: {
-                                Task {
-                                    await remindersManager.markTaskCompleted(task)
-                                }
-                            }
-                        )
-                        .draggable(task.id) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 6) {
+                        ForEach(tasks) { task in
                             TaskCard(
                                 task: task,
                                 quadrantColor: quadrantColor,
-                                onTap: {},
-                                onEdit: {},
-                                onDelete: {},
-                                onToggleComplete: {}
+                                onTap: { onTaskTap(task) },
+                                onEdit: { showingEditTask = task },
+                                onDelete: {
+                                    Task {
+                                        await remindersManager.deleteTask(task)
+                                    }
+                                },
+                                onToggleComplete: {
+                                    Task {
+                                        await remindersManager.markTaskCompleted(task)
+                                    }
+                                }
                             )
-                            .opacity(0.6)
-                            .scaleEffect(0.9)
-                            .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                            .draggable(task.id) {
+                                TaskCard(
+                                    task: task,
+                                    quadrantColor: quadrantColor,
+                                    onTap: {},
+                                    onEdit: {},
+                                    onDelete: {},
+                                    onToggleComplete: {}
+                                )
+                                .opacity(0.6)
+                                .scaleEffect(0.9)
+                                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                            }
                         }
-                    }
-                    
-                    // Add Task Button
-                    Button(action: { showingAddTask = true }) {
-                        HStack {
-                            Image(systemName: "plus")
-                                .foregroundColor(quadrantColor)
-                            Text("Add Task")
-                                .foregroundColor(quadrantColor)
+                        
+                        // Add Task Button
+                        Button(action: { showingAddTask = true }) {
+                            HStack {
+                                Image(systemName: "plus")
+                                    .foregroundColor(quadrantColor)
+                                Text("Add Task")
+                                    .foregroundColor(quadrantColor)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
+                                    .foregroundColor(quadrantColor.opacity(0.3))
+                            )
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
-                                .foregroundColor(quadrantColor.opacity(0.3))
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(12)
                 }
-                .padding(12)
+                .frame(height: max(0, availableHeight))
             }
         }
         .frame(width: geometry.size.width / 2, height: geometry.size.height / 2)
+        .clipped()
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(isTargeted ? quadrantColor.opacity(0.15) : Color(red: 1.0, green: 0.95, blue: 0.95))

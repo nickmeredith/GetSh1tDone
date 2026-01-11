@@ -110,7 +110,12 @@ class RemindersManager: ObservableObject {
         for (index, reminder) in incompleteReminders.enumerated() {
             // Only process non-completed reminders
             // Determine quadrant from tags (priority: DoNow > Delegate > Schedule > Bin)
-            let quadrant = extractQuadrant(from: reminder)
+            // Only include tasks that have an explicit quadrant tag
+            guard let quadrant = extractQuadrant(from: reminder) else {
+                // Skip reminders without a quadrant tag
+                continue
+            }
+            
             let task = TaskItem(reminder: reminder, quadrant: quadrant)
             
             quadrantCounts[quadrant, default: 0] += 1
@@ -144,7 +149,7 @@ class RemindersManager: ObservableObject {
         tasks = loadedTasks
     }
     
-    private func extractQuadrant(from reminder: EKReminder) -> Quadrant {
+    private func extractQuadrant(from reminder: EKReminder) -> Quadrant? {
         let title = reminder.title ?? ""
         let notes = reminder.notes ?? ""
         let calendarName = reminder.calendar?.title ?? ""
@@ -219,20 +224,20 @@ class RemindersManager: ObservableObject {
         if notes.isEmpty {
             // Only log occasionally for empty notes to avoid spam
             if tasks.count < 5 || tasks.count % 50 == 0 {
-                print("⚠️ No quadrant hashtag found in reminder: '\(title)'")
+                print("⚠️ No quadrant hashtag found in reminder: '\(title)' - skipping")
                 print("   Notes: (empty)")
                 print("   Calendar: '\(calendarName)'")
             }
         } else {
             // Always log if notes exist but no tag found - might indicate a parsing issue
-            print("⚠️ No quadrant hashtag found in reminder: '\(title)'")
+            print("⚠️ No quadrant hashtag found in reminder: '\(title)' - skipping")
             print("   Notes: '\(notes.prefix(200))'")
             print("   Calendar: '\(calendarName)'")
             print("   Lowercased combined: '\(lowercased.prefix(300))'")
         }
         
-        // Default to Schedule if no hashtag found
-        return .schedule
+        // Return nil if no hashtag found - task will be excluded
+        return nil
     }
     
     func moveTask(_ task: TaskItem, to quadrant: Quadrant) async {
