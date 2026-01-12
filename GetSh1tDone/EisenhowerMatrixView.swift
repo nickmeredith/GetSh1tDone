@@ -525,9 +525,9 @@ struct TaskCard: View {
                 }
                 .buttonStyle(.plain)
                 
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.gray.opacity(0.6))
+                Button(action: onToggleComplete) {
+                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundColor(task.isCompleted ? .green : .gray.opacity(0.6))
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.plain)
@@ -920,7 +920,31 @@ struct TaskDetailView: View {
                         dismiss()
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                
+                ToolbarItemGroup(placement: .primaryAction) {
+                    // Complete button
+                    Button(action: {
+                        Task {
+                            await remindersManager.markTaskCompleted(task)
+                            dismiss()
+                        }
+                    }) {
+                        Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                            .foregroundColor(task.isCompleted ? .green : .blue)
+                    }
+                    
+                    // Delete button
+                    Button(role: .destructive, action: {
+                        Task {
+                            await remindersManager.deleteTask(task)
+                            dismiss()
+                        }
+                    }) {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                    
+                    // Save button
                     Button("Save") {
                         // Parse tags from the text field
                         let tagArray = tags.components(separatedBy: " ")

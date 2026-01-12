@@ -1,54 +1,100 @@
 {
   "images" : [
     {
-      "idiom" : "mac",
-      "scale" : "1x",
-      "size" : "16x16"
+      "filename" : "icon-1024.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
     },
     {
-      "idiom" : "mac",
+      "filename" : "icon-180.png",
+      "idiom" : "iphone",
+      "scale" : "3x",
+      "size" : "60x60"
+    },
+    {
+      "filename" : "icon-120.png",
+      "idiom" : "iphone",
       "scale" : "2x",
-      "size" : "16x16"
+      "size" : "60x60"
     },
     {
-      "idiom" : "mac",
-      "scale" : "1x",
-      "size" : "32x32"
-    },
-    {
-      "idiom" : "mac",
+      "filename" : "icon-167.png",
+      "idiom" : "ipad",
       "scale" : "2x",
-      "size" : "32x32"
+      "size" : "83.5x83.5"
     },
     {
-      "idiom" : "mac",
-      "scale" : "1x",
-      "size" : "128x128"
-    },
-    {
-      "idiom" : "mac",
+      "filename" : "icon-152.png",
+      "idiom" : "ipad",
       "scale" : "2x",
-      "size" : "128x128"
+      "size" : "76x76"
     },
     {
-      "idiom" : "mac",
+      "filename" : "icon-1024.png",
+      "idiom" : "ios-marketing",
       "scale" : "1x",
-      "size" : "256x256"
+      "size" : "1024x1024"
     },
     {
-      "idiom" : "mac",
-      "scale" : "2x",
-      "size" : "256x256"
-    },
-    {
+      "filename" : "icon-512.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "512x512"
     },
     {
+      "filename" : "icon-1024.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "512x512"
+    },
+    {
+      "filename" : "icon-256.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "256x256"
+    },
+    {
+      "filename" : "icon-512.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "256x256"
+    },
+    {
+      "filename" : "icon-128.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "128x128"
+    },
+    {
+      "filename" : "icon-256.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "128x128"
+    },
+    {
+      "filename" : "icon-32.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "32x32"
+    },
+    {
+      "filename" : "icon-64.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "32x32"
+    },
+    {
+      "filename" : "icon-16.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "16x16"
+    },
+    {
+      "filename" : "icon-32.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "16x16"
     }
   ],
   "info" : {

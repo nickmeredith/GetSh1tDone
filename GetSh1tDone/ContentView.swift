@@ -19,16 +19,16 @@ struct ContentView: View {
                 }
                 .tag(1)
             
-            TaskChallengeView(remindersManager: remindersManager)
-                .tabItem {
-                    Label("Challenges", systemImage: "lightbulb")
-                }
-                .tag(2)
-            
             PrioritiesView()
                 .environmentObject(remindersManager)
                 .tabItem {
                     Label("Plan", systemImage: "calendar")
+                }
+                .tag(2)
+            
+            TaskChallengeView(remindersManager: remindersManager)
+                .tabItem {
+                    Label("Challenges", systemImage: "lightbulb")
                 }
                 .tag(3)
         }
