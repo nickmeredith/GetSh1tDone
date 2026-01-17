@@ -14,46 +14,30 @@ struct EisenhowerMatrixView: View {
     @State private var expandedQuadrant: Quadrant?
     @State private var showOnlyToday = false
     @State private var showOnlyThisWeek = false
+    @State private var showOnlyDelegated = false
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                // Logo - Productivity themed
-                HStack(spacing: 6) {
-                    ZStack {
-                        // Background circle with gradient
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [Color.blue, Color.purple]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 40, height: 40)
-                            .shadow(color: Color.blue.opacity(0.3), radius: 4, x: 0, y: 2)
-                        
-                        // Checkmark icon
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.white)
-                    }
-                    
-                    // Lightning bolt for action/speed
-                    ZStack {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.orange)
-                            .offset(x: -6, y: 0)
-                    }
-                }
-                .padding(.leading)
-                
                 Spacer()
                 
                 // Filter toggles
                 HStack(spacing: 8) {
+                    // Show Delegated toggle
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundColor(showOnlyDelegated ? .blue : .secondary)
+                        Toggle("Delegated", isOn: $showOnlyDelegated)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(6)
+                    
                     // Show Today toggle
                     HStack(spacing: 4) {
                         Image(systemName: "calendar")
@@ -126,7 +110,7 @@ struct EisenhowerMatrixView: View {
                         // Top Row
                         QuadrantView(
                             quadrant: .doNow,
-                            tasks: remindersManager.getTasksForQuadrant(.doNow, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                            tasks: remindersManager.getTasksForQuadrant(.doNow, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -144,7 +128,7 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .schedule,
-                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                            tasks: remindersManager.getTasksForQuadrant(.schedule, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -165,7 +149,7 @@ struct EisenhowerMatrixView: View {
                         // Bottom Row
                         QuadrantView(
                             quadrant: .delegate,
-                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                            tasks: remindersManager.getTasksForQuadrant(.delegate, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -183,7 +167,7 @@ struct EisenhowerMatrixView: View {
                         
                         QuadrantView(
                             quadrant: .bin,
-                            tasks: remindersManager.getTasksForQuadrant(.bin, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                            tasks: remindersManager.getTasksForQuadrant(.bin, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
                             allTasks: remindersManager.tasks,
                             geometry: geometry,
                             remindersManager: remindersManager,
@@ -203,12 +187,16 @@ struct EisenhowerMatrixView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .task {
+            // Load delegates when view appears
+            await remindersManager.loadDelegates()
+        }
         .overlay {
             // Full-screen quadrant view
             if let expanded = expandedQuadrant {
                 FullScreenQuadrantView(
                     quadrant: expanded,
-                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: true, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: true, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
                     allTasks: remindersManager.tasks,
                     remindersManager: remindersManager,
                     showOnlyToday: showOnlyToday,

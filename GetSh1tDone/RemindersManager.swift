@@ -550,7 +550,7 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true, showOnlyToday: Bool = false, showOnlyThisWeek: Bool = false) -> [TaskItem] {
+    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true, showOnlyToday: Bool = false, showOnlyThisWeek: Bool = false, showOnlyDelegated: Bool = false) -> [TaskItem] {
         var filteredTasks = tasks.filter { $0.quadrant == quadrant }
         
         // Filter by completion status
@@ -569,7 +569,46 @@ class RemindersManager: ObservableObject {
             }
         }
         
+        // Filter by delegated tasks
+        if showOnlyDelegated {
+            filteredTasks = filteredTasks.filter { task in
+                hasDelegateTag(task)
+            }
+        }
+        
         return filteredTasks
+    }
+    
+    func hasDelegateTag(_ task: TaskItem) -> Bool {
+        // Check if task has any tag that matches a delegate name
+        let allTags = task.tags + TaskItem.extractTags(from: task.notes)
+        
+        // If no delegates loaded, return false
+        guard !delegates.isEmpty else {
+            print("⚠️ No delegates loaded for delegate tag check")
+            return false
+        }
+        
+        // Check if any tag matches any delegate (case-insensitive)
+        // Tags are stored as #delegatename format
+        for tag in allTags {
+            let lowerTag = tag.lowercased()
+            // Remove # from tag for comparison
+            let tagWithoutHash = lowerTag.hasPrefix("#") ? String(lowerTag.dropFirst()) : lowerTag
+            
+            // Check if this tag matches any delegate name
+            for delegate in delegates {
+                let lowerDelegate = delegate.lowercased()
+                // Match if tag (without #) equals delegate name, or tag equals #delegatename
+                if tagWithoutHash == lowerDelegate || lowerTag == "#\(lowerDelegate)" {
+                    print("✅ Found delegate tag '\(tag)' matching delegate '\(delegate)' in task '\(task.title)'")
+                    return true
+                }
+            }
+        }
+        
+        print("❌ No delegate tag found in task '\(task.title)'. Tags: \(allTags.joined(separator: ", ")), Delegates: \(delegates.joined(separator: ", "))")
+        return false
     }
     
     func hasTimePeriodTag(_ task: TaskItem, tag: String) -> Bool {
