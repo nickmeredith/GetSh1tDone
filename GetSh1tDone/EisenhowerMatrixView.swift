@@ -349,6 +349,7 @@ struct QuadrantView: View {
                             TaskCard(
                                 task: task,
                                 quadrantColor: quadrantColor,
+                                remindersManager: remindersManager,
                                 onTap: { onTaskTap(task) },
                                 onEdit: { showingEditTask = task },
                                 onDelete: {
@@ -363,12 +364,12 @@ struct QuadrantView: View {
                                 },
                                 onSetToday: {
                                     Task {
-                                        await remindersManager.setTimePeriodTag(task, tag: "#today")
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#today")
                                     }
                                 },
                                 onSetThisWeek: {
                                     Task {
-                                        await remindersManager.setTimePeriodTag(task, tag: "#thisweek")
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#thisweek")
                                     }
                                 }
                             )
@@ -376,6 +377,7 @@ struct QuadrantView: View {
                                 TaskCard(
                                     task: task,
                                     quadrantColor: quadrantColor,
+                                    remindersManager: remindersManager,
                                     onTap: {},
                                     onEdit: {},
                                     onDelete: {},
@@ -470,6 +472,7 @@ struct QuadrantView: View {
 struct TaskCard: View {
     let task: TaskItem
     let quadrantColor: Color
+    let remindersManager: RemindersManager
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -547,20 +550,24 @@ struct TaskCard: View {
             Group {
                 if isDragging {
                     if swipeDirection == .right {
-                        // Right swipe - set to today
+                        // Right swipe - toggle today
                         HStack {
                             Spacer()
-                            Image(systemName: "calendar")
-                                .foregroundColor(.blue)
+                            // Check if task already has #today tag
+                            let hasToday = remindersManager.hasTimePeriodTag(task, tag: "#today")
+                            Image(systemName: hasToday ? "calendar.badge.minus" : "calendar")
+                                .foregroundColor(hasToday ? .red : .blue)
                                 .font(.title2)
                                 .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
                                 .padding(.trailing, 12)
                         }
                     } else if swipeDirection == .left {
-                        // Left swipe - set to this week
+                        // Left swipe - toggle this week
                         HStack {
-                            Image(systemName: "calendar.badge.clock")
-                                .foregroundColor(.blue)
+                            // Check if task already has #thisweek tag
+                            let hasThisWeek = remindersManager.hasTimePeriodTag(task, tag: "#thisweek")
+                            Image(systemName: hasThisWeek ? "calendar.badge.minus" : "calendar.badge.clock")
+                                .foregroundColor(hasThisWeek ? .red : .blue)
                                 .font(.title2)
                                 .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
                                 .padding(.leading, 12)
@@ -659,14 +666,34 @@ struct AddTaskView: View {
     @State private var title: String = ""
     @State private var notes: String = ""
     @State private var tags: String = ""
+    @State private var dueDate: Date?
+    @State private var hasDueDate: Bool = false
+    @State private var selectedDelegate: String?
+    @State private var selectedTimePeriod: String = ""
     
     var body: some View {
         NavigationView {
             Form {
                 Section("Task Details") {
-                    TextField("Task Title", text: $title)
+                    TextField("Title", text: $title)
                     TextEditor(text: $notes)
-                        .frame(height: 100)
+                        .frame(height: 130) // Match TaskDetailView height
+                }
+                
+                // Time Period Selection - moved right after notes
+                Section("Time Period") {
+                    Picker("When to do", selection: $selectedTimePeriod) {
+                        Text("None").tag("")
+                        Text("Today").tag("#today")
+                        Text("This Week").tag("#thisweek")
+                        Text("This Month").tag("#thismonth")
+                        Text("This Quarter").tag("#thisquarter")
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedTimePeriod) { newPeriod in
+                        // Update tags when time period changes
+                        updateTagsWithTimePeriod(newPeriod)
+                    }
                 }
                 
                 Section("Tags") {
@@ -674,8 +701,71 @@ struct AddTaskView: View {
                         .autocapitalization(.none)
                 }
                 
+                // Delegate section
+                Section("Delegate") {
+                    Picker("Assign to", selection: $selectedDelegate) {
+                        Text("None").tag(nil as String?)
+                        ForEach(remindersManager.delegates, id: \.self) { delegate in
+                            Text(delegate).tag(delegate as String?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedDelegate) { newDelegate in
+                        // Remove old delegate tag
+                        var updatedTags = tags.components(separatedBy: " ")
+                            .filter { $0.hasPrefix("#") }
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        
+                        // Remove all delegate tags
+                        updatedTags = updatedTags.filter { tag in
+                            !remindersManager.delegates.contains { delegate in
+                                tag.lowercased() == "#\(delegate.lowercased())"
+                            }
+                        }
+                        
+                        // Add new delegate tag if selected
+                        if let delegate = newDelegate {
+                            updatedTags.append("#\(delegate)")
+                        }
+                        
+                        tags = updatedTags.joined(separator: " ")
+                    }
+                }
+                
+                // Date and Time section
+                Section("Date & Time") {
+                    Toggle("Set Due Date", isOn: Binding(
+                        get: { hasDueDate },
+                        set: { newValue in
+                            hasDueDate = newValue
+                            if newValue && dueDate == nil {
+                                dueDate = Date()
+                            }
+                        }
+                    ))
+                    
+                    if hasDueDate {
+                        DatePicker("Date", selection: Binding(
+                            get: { dueDate ?? Date() },
+                            set: { dueDate = $0 }
+                        ), displayedComponents: [.date])
+                        .datePickerStyle(.compact)
+                        
+                        DatePicker("Time", selection: Binding(
+                            get: { dueDate ?? Date() },
+                            set: { dueDate = $0 }
+                        ), displayedComponents: [.hourAndMinute])
+                        .datePickerStyle(.compact)
+                    } else {
+                        Text("No due date set")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                }
+                
                 Section("Quadrant") {
-                    Text(quadrant.rawValue)
+                    Text("Current: \(quadrant.rawValue)")
                     Text(quadrant.description)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -693,7 +783,7 @@ struct AddTaskView: View {
                     Button("Save") {
                         // Parse tags and remove duplicates (case-insensitive)
                         var seenTags = Set<String>()
-                        let tagArray = tags.components(separatedBy: " ")
+                        var tagArray = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
                             .map { $0.trimmingCharacters(in: .whitespaces) }
                             .filter { !$0.isEmpty }
@@ -706,25 +796,64 @@ struct AddTaskView: View {
                                 return tag
                             }
                         
+                        // Add time period tag if selected
+                        if !selectedTimePeriod.isEmpty && !seenTags.contains(selectedTimePeriod.lowercased()) {
+                            tagArray.append(selectedTimePeriod)
+                        }
+                        
+                        // Build notes with tags included (so they appear in both notes and tags)
+                        var finalNotes = notes
+                        if !tagArray.isEmpty {
+                            if !finalNotes.isEmpty {
+                                finalNotes += "\n\n"
+                            }
+                            finalNotes += tagArray.joined(separator: " ")
+                        }
+                        
                         let task = TaskItem(
                             title: title,
-                            notes: notes,
+                            notes: finalNotes,
                             quadrant: quadrant,
                             tags: tagArray
                         )
                         
                         Task {
-                            await remindersManager.addTask(task)
+                            let taskDueDate = hasDueDate ? dueDate : nil
+                            await remindersManager.addTask(task, dueDate: taskDueDate)
                             dismiss()
                         }
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .task {
+                // Load delegates when view appears
+                await remindersManager.loadDelegates()
+            }
         }
         #if os(macOS)
         .frame(width: 500, height: 400)
         #endif
+    }
+    
+    private func updateTagsWithTimePeriod(_ period: String) {
+        let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+        
+        // Remove existing time period tags
+        var updatedTags = tags.components(separatedBy: " ")
+            .filter { $0.hasPrefix("#") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .filter { tag in
+                !timePeriodTags.contains { $0.lowercased() == tag.lowercased() }
+            }
+        
+        // Add new time period tag if not empty
+        if !period.isEmpty {
+            updatedTags.append(period)
+        }
+        
+        tags = updatedTags.joined(separator: " ")
     }
 }
 
@@ -820,6 +949,7 @@ struct TaskDetailView: View {
     @State private var tags: String
     @State private var dueDate: Date?
     @State private var hasDueDate: Bool
+    @State private var selectedDelegate: String?
     
     init(task: TaskItem, remindersManager: RemindersManager) {
         self.task = task
@@ -840,6 +970,16 @@ struct TaskDetailView: View {
             return tag
         }.sorted()
         _tags = State(initialValue: combinedTags.joined(separator: " "))
+        
+        // Extract current delegate from tags (if any)
+        // Note: delegates might not be loaded yet, will be set in .task modifier
+        let allTags = task.tags + allTagsFromNotes
+        let currentDelegate = remindersManager.delegates.first { delegate in
+            allTags.contains { tag in
+                tag.lowercased() == "#\(delegate.lowercased())"
+            }
+        }
+        _selectedDelegate = State(initialValue: currentDelegate)
         
         // Initialize due date
         if let reminder = task.reminder,
@@ -904,6 +1044,38 @@ struct TaskDetailView: View {
                 Section("Tags") {
                     TextField("Enter tags (e.g., #urgent #important)", text: $tags)
                         .autocapitalization(.none)
+                }
+                
+                // Delegate section
+                Section("Delegate") {
+                    Picker("Assign to", selection: $selectedDelegate) {
+                        Text("None").tag(nil as String?)
+                        ForEach(remindersManager.delegates, id: \.self) { delegate in
+                            Text(delegate).tag(delegate as String?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedDelegate) { newDelegate in
+                        // Remove old delegate tag
+                        var updatedTags = tags.components(separatedBy: " ")
+                            .filter { $0.hasPrefix("#") }
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        
+                        // Remove all delegate tags
+                        updatedTags = updatedTags.filter { tag in
+                            !remindersManager.delegates.contains { delegate in
+                                tag.lowercased() == "#\(delegate.lowercased())"
+                            }
+                        }
+                        
+                        // Add new delegate tag if selected
+                        if let delegate = newDelegate {
+                            updatedTags.append("#\(delegate)")
+                        }
+                        
+                        tags = updatedTags.joined(separator: " ")
+                    }
                 }
                 
                 // Date and Time section
@@ -1004,6 +1176,21 @@ struct TaskDetailView: View {
                             dismiss()
                         }
                     }
+                }
+            }
+        }
+        .task {
+            // Load delegates when view appears
+            await remindersManager.loadDelegates()
+            
+            // Update selected delegate after loading
+            let allTags = tags.components(separatedBy: " ")
+                .filter { $0.hasPrefix("#") }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            
+            selectedDelegate = remindersManager.delegates.first { delegate in
+                allTags.contains { tag in
+                    tag.lowercased() == "#\(delegate.lowercased())"
                 }
             }
         }
@@ -1109,6 +1296,7 @@ struct FullScreenQuadrantView: View {
                             TaskCard(
                                 task: task,
                                 quadrantColor: quadrantColor,
+                                remindersManager: remindersManager,
                                 onTap: { onTaskTap(task) },
                                 onEdit: { showingEditTask = task },
                                 onDelete: {
@@ -1123,12 +1311,12 @@ struct FullScreenQuadrantView: View {
                                 },
                                 onSetToday: {
                                     Task {
-                                        await remindersManager.setTimePeriodTag(task, tag: "#today")
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#today")
                                     }
                                 },
                                 onSetThisWeek: {
                                     Task {
-                                        await remindersManager.setTimePeriodTag(task, tag: "#thisweek")
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#thisweek")
                                     }
                                 }
                             )
@@ -1136,6 +1324,7 @@ struct FullScreenQuadrantView: View {
                                 TaskCard(
                                     task: task,
                                     quadrantColor: quadrantColor,
+                                    remindersManager: remindersManager,
                                     onTap: {},
                                     onEdit: {},
                                     onDelete: {},

@@ -13,6 +13,7 @@
 		3895B8FEB555 /* EisenhowerMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A134FA4261 /* EisenhowerMatrixView.swift */; };
 		46998B88C258 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4735879CE44 /* Assets.xcassets */; };
 		57E12144723E /* GetSh1tDoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E497FBF55B68 /* GetSh1tDoneApp.swift */; };
+		60DE69A82F1C3E2100055268 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DE69A72F1C3E2100055268 /* SettingsView.swift */; };
 		75B449C1E4FA /* PlanningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* PlanningView.swift */; };
 		AE8DBB489392 /* TaskChallengeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AF144261B /* TaskChallengeView.swift */; };
 		B1B96B9F332D /* PrioritiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD899DA81549 /* PrioritiesView.swift */; };
@@ -23,6 +24,7 @@
 		113ED6A8417E /* GetSh1tDone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GetSh1tDone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		11A134FA4261 /* EisenhowerMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EisenhowerMatrixView.swift; sourceTree = "<group>"; };
 		4AEB726BF86C /* GetSh1tDone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GetSh1tDone.entitlements; sourceTree = "<group>"; };
+		60DE69A72F1C3E2100055268 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7984FFD71742 /* TaskQuadrant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskQuadrant.swift; sourceTree = "<group>"; };
 		988AF144261B /* TaskChallengeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskChallengeView.swift; sourceTree = "<group>"; };
 		A944E9BDA6D7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -67,6 +69,7 @@
 				A944E9BDA6D7 /* ContentView.swift */,
 				0F76AC6A41EB /* RemindersManager.swift */,
 				11A134FA4261 /* EisenhowerMatrixView.swift */,
+				60DE69A72F1C3E2100055268 /* SettingsView.swift */,
 				7984FFD71742 /* TaskQuadrant.swift */,
 				EA638E163650 /* PlanningView.swift */,
 				988AF144261B /* TaskChallengeView.swift */,
@@ -145,6 +148,7 @@
 				57E12144723E /* GetSh1tDoneApp.swift in Sources */,
 				0512C208C122 /* ContentView.swift in Sources */,
 				1FC943C93385 /* RemindersManager.swift in Sources */,
+				60DE69A82F1C3E2100055268 /* SettingsView.swift in Sources */,
 				3895B8FEB555 /* EisenhowerMatrixView.swift in Sources */,
 				1B173EE0794E /* TaskQuadrant.swift in Sources */,
 				75B449C1E4FA /* PlanningView.swift in Sources */,

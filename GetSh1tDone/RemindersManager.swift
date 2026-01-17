@@ -9,6 +9,7 @@ class RemindersManager: ObservableObject {
     @Published var authorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var isLoading = false
     @Published var lastError: String?
+    @Published var delegates: [String] = []
     
     private var notificationObserver: NSObjectProtocol?
     
@@ -453,14 +454,72 @@ class RemindersManager: ObservableObject {
                 }
                 
                 // Add tags if provided, otherwise use existing tags
-                // Remove duplicates (case-insensitive)
+                // Step 1: Deduplicate tags (case-insensitive)
                 let tagsToAdd = tags ?? task.tags
-                let uniqueTags = Array(Set(tagsToAdd.map { $0.lowercased() }))
-                    .compactMap { lowerTag in
-                        tagsToAdd.first { $0.lowercased() == lowerTag }
+                var seenTags = Set<String>()
+                let uniqueTags = tagsToAdd.compactMap { tag -> String? in
+                    let lower = tag.lowercased()
+                    if seenTags.contains(lower) {
+                        return nil
                     }
-                if !uniqueTags.isEmpty {
-                    updatedNotes += "\n" + uniqueTags.joined(separator: " ")
+                    seenTags.insert(lower)
+                    return tag
+                }
+                
+                // Step 2: Extract tags from notes and combine, ensuring no duplicates
+                let existingTagsInNotes = TaskItem.extractTags(from: updatedNotes)
+                var seenTagsInNotes = Set<String>()
+                let uniqueTagsInNotes = existingTagsInNotes.compactMap { tag -> String? in
+                    let lower = tag.lowercased()
+                    if seenTagsInNotes.contains(lower) {
+                        return nil
+                    }
+                    seenTagsInNotes.insert(lower)
+                    return tag
+                }
+                
+                // Step 3: Combine all tags, ensuring no duplicates
+                var allTags = uniqueTags
+                for existingTag in uniqueTagsInNotes {
+                    if !allTags.contains(where: { $0.lowercased() == existingTag.lowercased() }) {
+                        allTags.append(existingTag)
+                    }
+                }
+                
+                // Step 4: Final deduplication pass
+                var finalSeenTags = Set<String>()
+                let finalUniqueTags = allTags.compactMap { tag -> String? in
+                    let lower = tag.lowercased()
+                    if finalSeenTags.contains(lower) {
+                        return nil
+                    }
+                    finalSeenTags.insert(lower)
+                    return tag
+                }
+                
+                // Step 5: Remove existing tags from notes before adding deduplicated ones
+                // Remove all hashtags except quadrant hashtag
+                let lines = updatedNotes.components(separatedBy: .newlines)
+                var cleanedLines: [String] = []
+                for line in lines {
+                    let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                    // Keep lines that don't start with # (except quadrant hashtag which we'll add separately)
+                    if !trimmedLine.hasPrefix("#") || trimmedLine == currentHashtag {
+                        cleanedLines.append(line)
+                    }
+                }
+                updatedNotes = cleanedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                // Ensure quadrant hashtag is present
+                if !updatedNotes.contains(currentHashtag) {
+                    if !updatedNotes.isEmpty {
+                        updatedNotes += "\n\n"
+                    }
+                    updatedNotes += currentHashtag
+                }
+                
+                if !finalUniqueTags.isEmpty {
+                    updatedNotes += "\n" + finalUniqueTags.joined(separator: " ")
                 }
                 
                 reminder.notes = updatedNotes
@@ -513,10 +572,71 @@ class RemindersManager: ObservableObject {
         return filteredTasks
     }
     
-    private func hasTimePeriodTag(_ task: TaskItem, tag: String) -> Bool {
+    func hasTimePeriodTag(_ task: TaskItem, tag: String) -> Bool {
         let allTags = task.tags + TaskItem.extractTags(from: task.notes)
         let lowerTag = tag.lowercased()
         return allTags.contains { $0.lowercased() == lowerTag }
+    }
+    
+    func toggleTimePeriodTag(_ task: TaskItem, tag: String) async {
+        // Check if tag already exists
+        let hasTag = hasTimePeriodTag(task, tag: tag)
+        
+        if hasTag {
+            // Remove the tag
+            await removeTimePeriodTag(task, tag: tag)
+        } else {
+            // Add the tag
+            await setTimePeriodTag(task, tag: tag)
+        }
+    }
+    
+    func removeTimePeriodTag(_ task: TaskItem, tag: String) async {
+        if let reminder = task.reminder {
+            let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+            
+            // Get current notes and tags
+            let currentNotes = reminder.notes ?? ""
+            let currentHashtag = task.quadrant.hashtag
+            
+            // Extract existing tags, excluding the specific time period tag to remove
+            var existingTags = TaskItem.extractTags(from: currentNotes)
+            let lowerTagToRemove = tag.lowercased()
+            existingTags = existingTags.filter { existingTag in
+                existingTag.lowercased() != lowerTagToRemove
+            }
+            
+            // Rebuild notes: user notes + quadrant hashtag + remaining tags
+            var userNotes = currentNotes
+                .replacingOccurrences(of: currentHashtag, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Remove the specific time period tag from user notes
+            userNotes = userNotes.replacingOccurrences(of: tag, with: "", options: .caseInsensitive)
+            userNotes = userNotes.replacingOccurrences(of: tag.capitalized, with: "", options: .caseInsensitive)
+            userNotes = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            var updatedNotes = userNotes
+            if !updatedNotes.isEmpty {
+                updatedNotes += "\n\n"
+            }
+            updatedNotes += currentHashtag
+            if !existingTags.isEmpty {
+                updatedNotes += "\n" + existingTags.joined(separator: " ")
+            }
+            
+            reminder.notes = updatedNotes
+            
+            do {
+                try eventStore.save(reminder, commit: true)
+                print("✅ Removed time period tag '\(tag)' from task '\(task.title)'")
+                await loadReminders()
+            } catch {
+                let errorMsg = "Error removing time period tag: \(error.localizedDescription)"
+                print(errorMsg)
+                lastError = errorMsg
+            }
+        }
     }
     
     func setTimePeriodTag(_ task: TaskItem, tag: String) async {
@@ -630,7 +750,7 @@ class RemindersManager: ObservableObject {
         return nil
     }
     
-    func addTask(_ task: TaskItem) async {
+    func addTask(_ task: TaskItem, dueDate: Date? = nil) async {
         // Check authorization first
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
@@ -684,9 +804,9 @@ class RemindersManager: ObservableObject {
         reminder.title = task.title
         
         // Build notes with quadrant hashtag and tags
-        // Remove duplicate tags (case-insensitive)
+        // Step 1: Deduplicate tags from task.tags (case-insensitive)
         var seenTags = Set<String>()
-        let uniqueTags = task.tags.compactMap { tag -> String? in
+        let uniqueTagsFromTask = task.tags.compactMap { tag -> String? in
             let lower = tag.lowercased()
             if seenTags.contains(lower) {
                 return nil
@@ -695,16 +815,62 @@ class RemindersManager: ObservableObject {
             return tag
         }
         
+        // Step 2: Start with user's notes (which may already contain tags from AddTaskView)
         var notes = task.notes
+        
+        // Step 3: Extract existing tags from notes and deduplicate
+        let existingTagsInNotes = TaskItem.extractTags(from: notes)
+        var seenTagsInNotes = Set<String>()
+        let uniqueTagsInNotes = existingTagsInNotes.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if seenTagsInNotes.contains(lower) {
+                return nil
+            }
+            seenTagsInNotes.insert(lower)
+            return tag
+        }
+        
+        // Step 4: Combine tags from task.tags and notes, ensuring all tags are present and deduplicated
+        var allTags = uniqueTagsFromTask
+        for existingTag in uniqueTagsInNotes {
+            if !allTags.contains(where: { $0.lowercased() == existingTag.lowercased() }) {
+                allTags.append(existingTag)
+            }
+        }
+        
+        // Step 5: Final deduplication pass (case-insensitive)
+        var finalSeenTags = Set<String>()
+        let finalUniqueTags = allTags.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if finalSeenTags.contains(lower) {
+                return nil
+            }
+            finalSeenTags.insert(lower)
+            return tag
+        }
+        
+        // Step 6: Build final notes: user notes + quadrant hashtag + all deduplicated tags
+        // Remove quadrant hashtag from notes if it's already there
+        let quadrantHashtag = task.quadrant.hashtag
+        notes = notes.replacingOccurrences(of: quadrantHashtag, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        
         if !notes.isEmpty {
             notes += "\n\n"
         }
-        notes += task.quadrant.hashtag
-        if !uniqueTags.isEmpty {
-            notes += "\n" + uniqueTags.joined(separator: " ")
+        notes += quadrantHashtag
+        if !finalUniqueTags.isEmpty {
+            notes += "\n" + finalUniqueTags.joined(separator: " ")
         }
         reminder.notes = notes
         reminder.calendar = calendar
+        
+        // Set due date if provided
+        if let dueDate = dueDate {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
+            reminder.dueDateComponents = components
+            print("📅 Set due date: \(dueDate)")
+        }
         
         do {
             try eventStore.save(reminder, commit: true)
@@ -734,6 +900,212 @@ class RemindersManager: ObservableObject {
         } else {
             // Remove from local tasks if it's not a reminder
             tasks.removeAll { $0.id == task.id }
+        }
+    }
+    
+    // MARK: - Delegate Management
+    
+    func loadDelegates() async {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        
+        guard isAuthorized else {
+            print("❌ Not authorized to load delegates")
+            return
+        }
+        
+        // Find the "Delegates" list
+        let calendars = eventStore.calendars(for: .reminder)
+        guard let delegatesCalendar = calendars.first(where: { $0.title.lowercased() == "delegates" }) else {
+            print("⚠️ Delegates list not found")
+            delegates = []
+            return
+        }
+        
+        // Fetch all reminders from the Delegates list
+        let predicate = eventStore.predicateForReminders(in: [delegatesCalendar])
+        let reminders = await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+        
+        // Extract delegate names from reminder titles
+        let delegateNames = reminders.compactMap { $0.title }.filter { !$0.isEmpty }
+        delegates = delegateNames.sorted()
+        print("✅ Loaded \(delegates.count) delegates: \(delegates.joined(separator: ", "))")
+    }
+    
+    func addDelegate(_ name: String) async {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        
+        guard isAuthorized else {
+            lastError = "Not authorized to add delegates"
+            return
+        }
+        
+        // Find or create the "Delegates" list
+        let calendars = eventStore.calendars(for: .reminder)
+        var delegatesCalendar = calendars.first(where: { $0.title.lowercased() == "delegates" })
+        
+        if delegatesCalendar == nil {
+            // Create the Delegates list
+            delegatesCalendar = EKCalendar(for: .reminder, eventStore: eventStore)
+            delegatesCalendar?.title = "Delegates"
+            
+            // Try to use iCloud calendar source
+            if let iCloudSource = eventStore.sources.first(where: { $0.sourceType == .calDAV && $0.title.contains("iCloud") }) {
+                delegatesCalendar?.source = iCloudSource
+            } else if let defaultSource = eventStore.sources.first(where: { $0.sourceType == .local }) {
+                delegatesCalendar?.source = defaultSource
+            }
+            
+            do {
+                try eventStore.saveCalendar(delegatesCalendar!, commit: true)
+                print("✅ Created Delegates list")
+            } catch {
+                lastError = "Failed to create Delegates list: \(error.localizedDescription)"
+                print("❌ \(lastError ?? "")")
+                return
+            }
+        }
+        
+        guard let calendar = delegatesCalendar else {
+            lastError = "Could not access Delegates list"
+            return
+        }
+        
+        // Check if delegate already exists
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let existingReminders = await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+        
+        if existingReminders.contains(where: { $0.title?.lowercased() == name.lowercased() }) {
+            print("⚠️ Delegate '\(name)' already exists")
+            await loadDelegates()
+            return
+        }
+        
+        // Create a new reminder for the delegate
+        let reminder = EKReminder(eventStore: eventStore)
+        reminder.title = name.trimmingCharacters(in: .whitespaces)
+        reminder.calendar = calendar
+        
+        do {
+            try eventStore.save(reminder, commit: true)
+            print("✅ Added delegate: \(name)")
+            await loadDelegates()
+        } catch {
+            lastError = "Failed to add delegate: \(error.localizedDescription)"
+            print("❌ \(lastError ?? "")")
+        }
+    }
+    
+    func removeDelegate(_ name: String) async {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        
+        guard isAuthorized else {
+            lastError = "Not authorized to remove delegates"
+            return
+        }
+        
+        // Find the "Delegates" list
+        let calendars = eventStore.calendars(for: .reminder)
+        guard let delegatesCalendar = calendars.first(where: { $0.title.lowercased() == "delegates" }) else {
+            lastError = "Delegates list not found"
+            return
+        }
+        
+        // Find the reminder with this name
+        let predicate = eventStore.predicateForReminders(in: [delegatesCalendar])
+        let reminders = await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+        
+        guard let reminder = reminders.first(where: { $0.title?.lowercased() == name.lowercased() }) else {
+            lastError = "Delegate not found"
+            return
+        }
+        
+        do {
+            try eventStore.remove(reminder, commit: true)
+            print("✅ Removed delegate: \(name)")
+            await loadDelegates()
+        } catch {
+            lastError = "Failed to remove delegate: \(error.localizedDescription)"
+            print("❌ \(lastError ?? "")")
+        }
+    }
+    
+    func updateDelegate(oldName: String, newName: String) async {
+        guard !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        
+        guard isAuthorized else {
+            lastError = "Not authorized to update delegates"
+            return
+        }
+        
+        // Find the "Delegates" list
+        let calendars = eventStore.calendars(for: .reminder)
+        guard let delegatesCalendar = calendars.first(where: { $0.title.lowercased() == "delegates" }) else {
+            lastError = "Delegates list not found"
+            return
+        }
+        
+        // Find the reminder with the old name
+        let predicate = eventStore.predicateForReminders(in: [delegatesCalendar])
+        let reminders = await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+        
+        guard let reminder = reminders.first(where: { $0.title?.lowercased() == oldName.lowercased() }) else {
+            lastError = "Delegate not found"
+            return
+        }
+        
+        reminder.title = newName.trimmingCharacters(in: .whitespaces)
+        
+        do {
+            try eventStore.save(reminder, commit: true)
+            print("✅ Updated delegate: \(oldName) → \(newName)")
+            await loadDelegates()
+        } catch {
+            lastError = "Failed to update delegate: \(error.localizedDescription)"
+            print("❌ \(lastError ?? "")")
         }
     }
 }

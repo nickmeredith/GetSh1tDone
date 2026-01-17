@@ -31,6 +31,12 @@ struct ContentView: View {
                     Label("Challenges", systemImage: "lightbulb")
                 }
                 .tag(3)
+            
+            SettingsView(remindersManager: remindersManager)
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape.fill")
+                }
+                .tag(4)
         }
     }
 }

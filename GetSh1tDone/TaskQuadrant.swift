@@ -55,7 +55,18 @@ struct TaskItem: Identifiable, Equatable {
         self.quadrant = quadrant
         self.lastModified = reminder.lastModifiedDate ?? Date()
         self.isCompleted = reminder.isCompleted
-        self.tags = Self.extractTags(from: reminder.notes ?? "")
+        
+        // Extract tags and deduplicate (case-insensitive)
+        let extractedTags = Self.extractTags(from: reminder.notes ?? "")
+        var seenTags = Set<String>()
+        self.tags = extractedTags.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if seenTags.contains(lower) {
+                return nil
+            }
+            seenTags.insert(lower)
+            return tag
+        }
     }
     
     init(id: String = UUID().uuidString, title: String, notes: String = "", quadrant: Quadrant, tags: [String] = []) {
