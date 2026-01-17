@@ -10,6 +10,7 @@ struct PrioritiesView: View {
     @State private var selectedTimePeriod: TimePeriod = .today
     @State private var showingEditTask: TaskItem?
     @State private var showingTaskDetail: TaskItem?
+    @State private var showCompletedTasks = false
     
     enum TimePeriod: String, CaseIterable {
         case today = "Today"
@@ -46,8 +47,27 @@ struct PrioritiesView: View {
                 .pickerStyle(.segmented)
                 .padding()
                 
+                // Show Completed toggle
+                HStack {
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                            .font(.caption2)
+                            .foregroundColor(showCompletedTasks ? .blue : .secondary)
+                        Toggle("Show Completed", isOn: $showCompletedTasks)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(6)
+                    .padding(.horizontal)
+                }
+                .padding(.bottom, 8)
+                
                 // Tasks List for selected time period
-                let filteredTasks = getTasksForTimePeriod(selectedTimePeriod)
+                let filteredTasks = getTasksForTimePeriod(selectedTimePeriod, showCompleted: showCompletedTasks)
                 
                 if filteredTasks.isEmpty {
                     VStack(spacing: 12) {
@@ -98,22 +118,15 @@ struct PrioritiesView: View {
         }
     }
     
-    private func getTasksForTimePeriod(_ period: TimePeriod) -> [TaskItem] {
-        let allTasks = remindersManager.tasks.filter { !$0.isCompleted }
-        let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
+    private func getTasksForTimePeriod(_ period: TimePeriod, showCompleted: Bool = false) -> [TaskItem] {
+        // Filter by completion status first
+        let allTasks = showCompleted ? remindersManager.tasks : remindersManager.tasks.filter { !$0.isCompleted }
         
         return allTasks.filter { task in
             let allTags = task.tags + TaskItem.extractTags(from: task.notes)
             let lowerTag = period.tag.lowercased()
             
-            // For "This Week", include both #thisweek and #today
-            if period == .thisWeek {
-                return allTags.contains { tag in
-                    let lower = tag.lowercased()
-                    return lower == "#thisweek" || lower == "#today"
-                }
-            }
-            
+            // Only show tasks that have the exact time period tag for this period
             return allTags.contains { $0.lowercased() == lowerTag }
         }
     }
@@ -186,8 +199,9 @@ struct TaskRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
                     .font(.body)
-                    .foregroundColor(task.isCompleted ? .secondary : .primary)
-                    .strikethrough(task.isCompleted)
+                    .foregroundColor(task.isCompleted ? .gray : .primary)
+                    .strikethrough(task.isCompleted, color: .gray)
+                    .opacity(task.isCompleted ? 0.6 : 1.0)
                 
                 // Quadrant badge
                 HStack(spacing: 6) {

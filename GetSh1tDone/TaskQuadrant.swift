@@ -83,13 +83,24 @@ struct TaskItem: Identifiable, Equatable {
         // Quadrant hashtags that should be excluded (case-insensitive)
         let quadrantTags = ["#donow", "#delegate", "#schedule", "#bin"]
         
-        return matches.compactMap { match in
+        var seenTags = Set<String>() // Track seen tags (case-insensitive) to avoid duplicates
+        let extractedTags = matches.compactMap { match -> String? in
             guard let range = Range(match.range, in: normalized) else { return nil }
             let tag = String(normalized[range])
             // Exclude quadrant hashtags (case-insensitive comparison)
             let lowerTag = tag.lowercased()
-            return quadrantTags.contains(lowerTag) ? nil : tag
+            if quadrantTags.contains(lowerTag) {
+                return nil
+            }
+            // Check for duplicates (case-insensitive)
+            if seenTags.contains(lowerTag) {
+                return nil
+            }
+            seenTags.insert(lowerTag)
+            return tag
         }
+        
+        return extractedTags
     }
 }
 

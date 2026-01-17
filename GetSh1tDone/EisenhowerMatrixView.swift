@@ -96,8 +96,8 @@ struct EisenhowerMatrixView: View {
                     HStack(spacing: 4) {
                         Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Toggle("Completed", isOn: $showCompletedTasks)
+                            .foregroundColor(showCompletedTasks ? .blue : .secondary)
+                        Toggle("Show Completed", isOn: $showCompletedTasks)
                             .labelsHidden()
                             .toggleStyle(.switch)
                     }
@@ -208,7 +208,7 @@ struct EisenhowerMatrixView: View {
             if let expanded = expandedQuadrant {
                 FullScreenQuadrantView(
                     quadrant: expanded,
-                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: showCompletedTasks, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
+                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: true, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek),
                     allTasks: remindersManager.tasks,
                     remindersManager: remindersManager,
                     showOnlyToday: showOnlyToday,
@@ -495,10 +495,11 @@ struct TaskCard: View {
                 // Task Title - smaller font
                 Text(task.title)
                     .font(.system(size: 13))
-                    .foregroundColor(task.isCompleted ? .gray.opacity(0.6) : .primary)
-                    .strikethrough(task.isCompleted)
+                    .foregroundColor(task.isCompleted ? .gray.opacity(0.7) : .primary)
+                    .strikethrough(task.isCompleted, color: .gray)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(task.isCompleted ? 0.6 : 1.0)
                 
                 // Tags - smaller
                 if !task.tags.isEmpty {
@@ -690,9 +691,20 @@ struct AddTaskView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        // Parse tags and remove duplicates (case-insensitive)
+                        var seenTags = Set<String>()
                         let tagArray = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
                             .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                            .compactMap { tag -> String? in
+                                let lower = tag.lowercased()
+                                if seenTags.contains(lower) {
+                                    return nil
+                                }
+                                seenTags.insert(lower)
+                                return tag
+                            }
                         
                         let task = TaskItem(
                             title: title,
@@ -764,9 +776,20 @@ struct EditTaskView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        // Parse tags and remove duplicates (case-insensitive)
+                        var seenTags = Set<String>()
                         let tagArray = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
                             .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                            .compactMap { tag -> String? in
+                                let lower = tag.lowercased()
+                                if seenTags.contains(lower) {
+                                    return nil
+                                }
+                                seenTags.insert(lower)
+                                return tag
+                            }
                         
                         var updatedTask = task
                         updatedTask.title = title
@@ -805,8 +828,17 @@ struct TaskDetailView: View {
         _notes = State(initialValue: task.notes.replacingOccurrences(of: task.quadrant.hashtag, with: "").trimmingCharacters(in: .whitespacesAndNewlines))
         
         // Extract all tags from notes and combine with task.tags
+        // Remove duplicates (case-insensitive)
         let allTagsFromNotes = TaskItem.extractTags(from: task.notes)
-        let combinedTags = Array(Set(task.tags + allTagsFromNotes)).sorted()
+        var seenTags = Set<String>()
+        let combinedTags = (task.tags + allTagsFromNotes).compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if seenTags.contains(lower) {
+                return nil
+            }
+            seenTags.insert(lower)
+            return tag
+        }.sorted()
         _tags = State(initialValue: combinedTags.joined(separator: " "))
         
         // Initialize due date
@@ -946,11 +978,20 @@ struct TaskDetailView: View {
                     
                     // Save button
                     Button("Save") {
-                        // Parse tags from the text field
+                        // Parse tags from the text field and remove duplicates (case-insensitive)
+                        var seenTags = Set<String>()
                         let tagArray = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
                             .map { $0.trimmingCharacters(in: .whitespaces) }
                             .filter { !$0.isEmpty }
+                            .compactMap { tag -> String? in
+                                let lower = tag.lowercased()
+                                if seenTags.contains(lower) {
+                                    return nil
+                                }
+                                seenTags.insert(lower)
+                                return tag
+                            }
                         
                         Task {
                             await remindersManager.updateTask(
@@ -984,6 +1025,16 @@ struct FullScreenQuadrantView: View {
     
     @State private var showingAddTask = false
     @State private var showingEditTask: TaskItem?
+    @State private var showCompletedTasks = false
+    
+    // Filter tasks based on showCompletedTasks toggle
+    private var filteredTasks: [TaskItem] {
+        if showCompletedTasks {
+            return tasks
+        } else {
+            return tasks.filter { !$0.isCompleted }
+        }
+    }
     
     private var quadrantColor: Color {
         switch quadrant {
@@ -1001,32 +1052,51 @@ struct FullScreenQuadrantView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header with close button
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(quadrant.rawValue)
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
+                // Header with close button and toggle
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(quadrant.rawValue)
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+                                .foregroundColor(quadrantColor)
+                            Text(quadrant.description)
+                                .font(.subheadline)
+                                .foregroundColor(quadrantColor.opacity(0.8))
+                        }
+                        
+                        Spacer()
+                        
+                        Text("\(filteredTasks.count) tasks")
+                            .font(.headline)
                             .foregroundColor(quadrantColor)
-                        Text(quadrant.description)
-                            .font(.subheadline)
-                            .foregroundColor(quadrantColor.opacity(0.8))
+                        
+                        // Close button
+                        Button(action: onClose) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 16)
                     }
                     
-                    Spacer()
-                    
-                    Text("\(tasks.count) tasks")
-                        .font(.headline)
-                        .foregroundColor(quadrantColor)
-                    
-                    // Close button
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title)
-                            .foregroundColor(.secondary)
+                    // Show Completed toggle
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                                .font(.caption2)
+                                .foregroundColor(showCompletedTasks ? .blue : .secondary)
+                            Toggle("Show Completed", isOn: $showCompletedTasks)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemBackground).opacity(0.8))
+                        .cornerRadius(6)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 16)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -1035,7 +1105,7 @@ struct FullScreenQuadrantView: View {
                 // Tasks list
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 8) {
-                        ForEach(tasks) { task in
+                        ForEach(filteredTasks) { task in
                             TaskCard(
                                 task: task,
                                 quadrantColor: quadrantColor,

@@ -100,19 +100,92 @@ class RemindersManager: ObservableObject {
         
         print("📋 Loading \(reminders.count) reminders...")
         
-        // Filter out completed reminders
-        let incompleteReminders = reminders.filter { !$0.isCompleted }
-        print("📋 Found \(incompleteReminders.count) incomplete reminders (filtered out \(reminders.count - incompleteReminders.count) completed)")
+        // Filter reminders: include incomplete ones and completed ones from today
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        
+        let filteredReminders = reminders.filter { reminder in
+            if !reminder.isCompleted {
+                // Include all incomplete reminders
+                return true
+            } else {
+                // Include completed reminders that were completed today
+                if let completionDate = reminder.completionDate {
+                    let completionDay = calendar.startOfDay(for: completionDate)
+                    return completionDay >= today && completionDay < tomorrow
+                }
+                return false
+            }
+        }
+        
+        let completedTodayCount = reminders.filter { $0.isCompleted && 
+            ($0.completionDate.map { calendar.startOfDay(for: $0) >= today && calendar.startOfDay(for: $0) < tomorrow } ?? false)
+        }.count
+        
+        print("📋 Found \(filteredReminders.count) reminders to load:")
+        print("   - Incomplete: \(filteredReminders.filter { !$0.isCompleted }.count)")
+        print("   - Completed today: \(completedTodayCount)")
+        print("   - Filtered out: \(reminders.count - filteredReminders.count) (completed on other days)")
         
         var quadrantCounts: [Quadrant: Int] = [.doNow: 0, .delegate: 0, .schedule: 0, .bin: 0]
         var sampleReminders: [String] = []
-        
-        for (index, reminder) in incompleteReminders.enumerated() {
-            // Only process non-completed reminders
+
+        for (index, reminder) in filteredReminders.enumerated() {
             // Determine quadrant from tags (priority: DoNow > Delegate > Schedule > Bin)
-            // Only include tasks that have an explicit quadrant tag
-            guard let quadrant = extractQuadrant(from: reminder) else {
-                // Skip reminders without a quadrant tag
+            var quadrant: Quadrant?
+            
+            // First, try to extract quadrant from tags
+            quadrant = extractQuadrant(from: reminder)
+            
+            // If no quadrant tag found, check if it has a time period tag
+            // If it does, assign it to Schedule as default so it shows up in Plan view
+            if quadrant == nil {
+                let notes = reminder.notes ?? ""
+                let title = reminder.title ?? ""
+                let calendarName = reminder.calendar?.title ?? ""
+                let combinedText = "\(notes) \(title) \(calendarName)"
+                let lowercased = combinedText.lowercased()
+                
+                // Check for time period tags with variations (similar to quadrant tag detection)
+                let timePeriodTags = [
+                    ("today", "#today"),
+                    ("thisweek", "#thisweek"),
+                    ("thismonth", "#thismonth"),
+                    ("thisquarter", "#thisquarter")
+                ]
+                
+                var hasTimePeriodTag = false
+                for (tagText, tag) in timePeriodTags {
+                    // Check multiple variations: #today, ##today, # today, etc.
+                    let searchPatterns = [
+                        "#\(tagText)",           // #today
+                        "##\(tagText)",          // ##today
+                        "# \(tagText)",          // # today
+                        "# #\(tagText)",         // # #today
+                        "## \(tagText)",         // ## today
+                        "#  \(tagText)",         // #  today
+                        "#  #\(tagText)"         // #  #today
+                    ]
+                    
+                    for pattern in searchPatterns {
+                        if lowercased.contains(pattern.lowercased()) {
+                            hasTimePeriodTag = true
+                            break
+                        }
+                    }
+                    if hasTimePeriodTag { break }
+                }
+                
+                if hasTimePeriodTag {
+                    // Assign to Schedule as default quadrant for tasks with time period tags
+                    quadrant = .schedule
+                    print("📅 Task '\(reminder.title ?? "")' has time period tag but no quadrant tag - assigning to Schedule")
+                }
+            }
+            
+            // Skip if still no quadrant (no quadrant tag and no time period tag)
+            guard let quadrant = quadrant else {
                 continue
             }
             
@@ -380,9 +453,14 @@ class RemindersManager: ObservableObject {
                 }
                 
                 // Add tags if provided, otherwise use existing tags
+                // Remove duplicates (case-insensitive)
                 let tagsToAdd = tags ?? task.tags
-                if !tagsToAdd.isEmpty {
-                    updatedNotes += "\n" + tagsToAdd.joined(separator: " ")
+                let uniqueTags = Array(Set(tagsToAdd.map { $0.lowercased() }))
+                    .compactMap { lowerTag in
+                        tagsToAdd.first { $0.lowercased() == lowerTag }
+                    }
+                if !uniqueTags.isEmpty {
+                    updatedNotes += "\n" + uniqueTags.joined(separator: " ")
                 }
                 
                 reminder.notes = updatedNotes
@@ -428,7 +506,7 @@ class RemindersManager: ObservableObject {
             }
         } else if showOnlyThisWeek {
             filteredTasks = filteredTasks.filter { task in
-                hasTimePeriodTag(task, tag: "#thisweek") || hasTimePeriodTag(task, tag: "#today")
+                hasTimePeriodTag(task, tag: "#thisweek")
             }
         }
         
@@ -455,8 +533,22 @@ class RemindersManager: ObservableObject {
                 !timePeriodTags.contains { $0.lowercased() == tag.lowercased() }
             }
             
-            // Add the new time period tag
-            existingTags.append(tag)
+            // Add the new time period tag (avoid duplicates)
+            let lowerNewTag = tag.lowercased()
+            if !existingTags.contains(where: { $0.lowercased() == lowerNewTag }) {
+                existingTags.append(tag)
+            }
+            
+            // Remove any remaining duplicates (case-insensitive)
+            var seenTags = Set<String>()
+            existingTags = existingTags.filter { tag in
+                let lower = tag.lowercased()
+                if seenTags.contains(lower) {
+                    return false
+                }
+                seenTags.insert(lower)
+                return true
+            }
             
             // Rebuild notes: user notes + quadrant hashtag + tags
             var userNotes = currentNotes
@@ -592,13 +684,24 @@ class RemindersManager: ObservableObject {
         reminder.title = task.title
         
         // Build notes with quadrant hashtag and tags
+        // Remove duplicate tags (case-insensitive)
+        var seenTags = Set<String>()
+        let uniqueTags = task.tags.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if seenTags.contains(lower) {
+                return nil
+            }
+            seenTags.insert(lower)
+            return tag
+        }
+        
         var notes = task.notes
         if !notes.isEmpty {
             notes += "\n\n"
         }
         notes += task.quadrant.hashtag
-        if !task.tags.isEmpty {
-            notes += "\n" + task.tags.joined(separator: " ")
+        if !uniqueTags.isEmpty {
+            notes += "\n" + uniqueTags.joined(separator: " ")
         }
         reminder.notes = notes
         reminder.calendar = calendar
