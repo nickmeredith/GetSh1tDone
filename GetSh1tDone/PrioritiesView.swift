@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct PrioritiesView: View {
     @AppStorage("priorities") private var prioritiesData: Data = Data()
@@ -87,6 +92,7 @@ struct PrioritiesView: View {
                         ForEach(filteredTasks) { task in
                             TaskRowView(
                                 task: task,
+                                remindersManager: remindersManager,
                                 onTap: {
                                     showingTaskDetail = task
                                 },
@@ -101,6 +107,16 @@ struct PrioritiesView: View {
                                 onToggleComplete: {
                                     Task {
                                         await remindersManager.markTaskCompleted(task)
+                                    }
+                                },
+                                onSetToday: {
+                                    Task {
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#today")
+                                    }
+                                },
+                                onSetThisWeek: {
+                                    Task {
+                                        await remindersManager.toggleTimePeriodTag(task, tag: "#thisweek")
                                     }
                                 }
                             )
@@ -180,10 +196,24 @@ struct PrioritiesView: View {
 
 struct TaskRowView: View {
     let task: TaskItem
+    @ObservedObject var remindersManager: RemindersManager
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onToggleComplete: () -> Void
+    let onSetToday: (() -> Void)?
+    let onSetThisWeek: (() -> Void)?
+    
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
+    @State private var swipeDirection: SwipeDirection = .none
+    
+    enum SwipeDirection {
+        case none, right, left
+    }
+    
+    // Swipe threshold - how far to swipe before completing
+    private let swipeThreshold: CGFloat = 100
     
     var body: some View {
         HStack(spacing: 12) {
@@ -244,6 +274,99 @@ struct TaskRowView: View {
             }
         }
         .padding(.vertical, 8)
+        .offset(x: dragOffset)
+        .overlay(
+            // Visual feedback for swipes
+            Group {
+                if isDragging {
+                    if swipeDirection == .right {
+                        // Right swipe - toggle today
+                        HStack {
+                            Spacer()
+                            // Check if task already has #today tag
+                            let hasToday = remindersManager.hasTimePeriodTag(task, tag: "#today")
+                            Image(systemName: hasToday ? "calendar.badge.minus" : "calendar")
+                                .foregroundColor(hasToday ? .red : .blue)
+                                .font(.title2)
+                                .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
+                                .padding(.trailing, 12)
+                        }
+                    } else if swipeDirection == .left {
+                        // Left swipe - toggle this week
+                        HStack {
+                            // Check if task already has #thisweek tag
+                            let hasThisWeek = remindersManager.hasTimePeriodTag(task, tag: "#thisweek")
+                            Image(systemName: hasThisWeek ? "calendar.badge.minus" : "calendar.badge.clock")
+                                .foregroundColor(hasThisWeek ? .red : .blue)
+                                .font(.title2)
+                                .opacity(min(abs(dragOffset) / swipeThreshold, 1.0))
+                                .padding(.leading, 12)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        )
+        .gesture(
+            DragGesture(minimumDistance: 20)
+                .onChanged { value in
+                    // Only respond to horizontal swipes
+                    // If vertical movement is greater, don't interfere with scrolling
+                    let horizontalMovement = abs(value.translation.width)
+                    let verticalMovement = abs(value.translation.height)
+                    
+                    // Only activate if horizontal movement is significantly greater than vertical (2:1 ratio)
+                    if horizontalMovement > verticalMovement * 2 {
+                        if value.translation.width > 0 {
+                            // Swiping right - set to today
+                            dragOffset = min(value.translation.width, swipeThreshold * 1.5)
+                            swipeDirection = .right
+                            isDragging = true
+                        } else if value.translation.width < 0 {
+                            // Swiping left - set to this week
+                            dragOffset = max(value.translation.width, -swipeThreshold * 1.5)
+                            swipeDirection = .left
+                            isDragging = true
+                        }
+                    }
+                }
+                .onEnded { value in
+                    if abs(value.translation.width) > swipeThreshold {
+                        if value.translation.width > 0 && swipeDirection == .right {
+                            // Swiped right - set to today
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                dragOffset = 0
+                            }
+                            onSetToday?()
+                            
+                            // Haptic feedback
+                            #if os(iOS)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            #endif
+                        } else if value.translation.width < 0 && swipeDirection == .left {
+                            // Swiped left - set to this week
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                dragOffset = 0
+                            }
+                            onSetThisWeek?()
+                            
+                            // Haptic feedback
+                            #if os(iOS)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            #endif
+                        }
+                    } else {
+                        // Spring back to original position
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+                    isDragging = false
+                    swipeDirection = .none
+                }
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             onTap()
