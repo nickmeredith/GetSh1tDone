@@ -9,7 +9,7 @@ class RemindersManager: ObservableObject {
     @Published var authorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var isLoading = false
     @Published var lastError: String?
-    @Published var delegates: [String] = []
+    @Published var delegates: [Delegate] = []
     
     private var notificationObserver: NSObjectProtocol?
     
@@ -172,15 +172,10 @@ class RemindersManager: ObservableObject {
                     print("🎯 Task '\(reminder.title ?? "")' has #challenge tag - assigning to Bin / Challenge")
                 } else {
                     // Check for time period tags with variations (similar to quadrant tag detection)
-                    let timePeriodTags = [
-                        ("today", "#today"),
-                        ("thisweek", "#thisweek"),
-                        ("thismonth", "#thismonth"),
-                        ("thisquarter", "#thisquarter")
-                    ]
+                    let timePeriodTagTexts = ["today", "thisweek", "thismonth", "thisquarter"]
                     
                     var hasTimePeriodTag = false
-                    for (tagText, _) in timePeriodTags {
+                    for tagText in timePeriodTagTexts {
                         // Check multiple variations: #today, ##today, # today, etc.
                         let searchPatterns = [
                             "#\(tagText)",           // #today
@@ -484,7 +479,7 @@ class RemindersManager: ObservableObject {
         }
         
         // Preserve existing notes and tags, just update quadrant hashtag
-        var notes = reminder.notes ?? ""
+        let notes = reminder.notes ?? ""
         
         // Remove old quadrant hashtags from notes
         let oldQuadrantTags = Quadrant.allCases.map { $0.hashtag.lowercased() }
@@ -740,7 +735,7 @@ class RemindersManager: ObservableObject {
     }
     
     func hasDelegateTag(_ task: TaskItem) -> Bool {
-        // Check if task has any tag that matches a delegate name
+        // Check if task has any tag that matches a delegate short name
         let allTags = task.tags + TaskItem.extractTags(from: task.notes)
         
         // If no delegates loaded, return false
@@ -749,25 +744,26 @@ class RemindersManager: ObservableObject {
             return false
         }
         
-        // Check if any tag matches any delegate (case-insensitive)
-        // Tags are stored as #delegatename format
+        // Check if any tag matches any delegate's short name (case-insensitive)
+        // Tags are stored as #shortname format
         for tag in allTags {
             let lowerTag = tag.lowercased()
             // Remove # from tag for comparison
             let tagWithoutHash = lowerTag.hasPrefix("#") ? String(lowerTag.dropFirst()) : lowerTag
             
-            // Check if this tag matches any delegate name
+            // Check if this tag matches any delegate's short name
             for delegate in delegates {
-                let lowerDelegate = delegate.lowercased()
-                // Match if tag (without #) equals delegate name, or tag equals #delegatename
-                if tagWithoutHash == lowerDelegate || lowerTag == "#\(lowerDelegate)" {
-                    print("✅ Found delegate tag '\(tag)' matching delegate '\(delegate)' in task '\(task.title)'")
+                let lowerShortName = delegate.shortName.lowercased()
+                // Match if tag (without #) equals delegate short name, or tag equals #shortname
+                if tagWithoutHash == lowerShortName || lowerTag == "#\(lowerShortName)" {
+                    print("✅ Found delegate tag '\(tag)' matching delegate '\(delegate.displayName)' (\(delegate.shortName)) in task '\(task.title)'")
                     return true
                 }
             }
         }
         
-        print("❌ No delegate tag found in task '\(task.title)'. Tags: \(allTags.joined(separator: ", ")), Delegates: \(delegates.joined(separator: ", "))")
+        let delegateNames = delegates.map { "\($0.displayName) (\($0.shortName))" }.joined(separator: ", ")
+        print("❌ No delegate tag found in task '\(task.title)'. Tags: \(allTags.joined(separator: ", ")), Delegates: \(delegateNames)")
         return false
     }
     
@@ -792,8 +788,6 @@ class RemindersManager: ObservableObject {
     
     func removeTimePeriodTag(_ task: TaskItem, tag: String) async {
         if let reminder = task.reminder {
-            let timePeriodTags = ["#today", "#thisweek", "#thismonth", "#thisquarter"]
-            
             // Get current notes and tags
             let currentNotes = reminder.notes ?? ""
             let currentHashtag = task.quadrant.hashtag
@@ -1149,14 +1143,27 @@ class RemindersManager: ObservableObject {
             }
         }
         
-        // Extract delegate names from reminder titles
-        let delegateNames = reminders.compactMap { $0.title }.filter { !$0.isEmpty }
-        delegates = delegateNames.sorted()
-        print("✅ Loaded \(delegates.count) delegates: \(delegates.joined(separator: ", "))")
+        // Extract delegates from reminders
+        // Title = short name (for hashtag), Notes = full name (for display)
+        var loadedDelegates: [Delegate] = []
+        for reminder in reminders {
+            guard let shortName = reminder.title, !shortName.isEmpty else { continue }
+            let fullName = reminder.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let delegate = Delegate(shortName: shortName, fullName: fullName)
+            loadedDelegates.append(delegate)
+        }
+        
+        // Sort by display name
+        delegates = loadedDelegates.sorted { $0.displayName < $1.displayName }
+        print("✅ Loaded \(delegates.count) delegates:")
+        for delegate in delegates {
+            print("   - \(delegate.displayName) (\(delegate.shortName))")
+        }
     }
     
-    func addDelegate(_ name: String) async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    func addDelegate(shortName: String, fullName: String) async {
+        let trimmedShortName = shortName.trimmingCharacters(in: .whitespaces)
+        guard !trimmedShortName.isEmpty else { return }
         
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
@@ -1210,20 +1217,22 @@ class RemindersManager: ObservableObject {
             }
         }
         
-        if existingReminders.contains(where: { $0.title?.lowercased() == name.lowercased() }) {
-            print("⚠️ Delegate '\(name)' already exists")
+        if existingReminders.contains(where: { $0.title?.lowercased() == trimmedShortName.lowercased() }) {
+            print("⚠️ Delegate with short name '\(trimmedShortName)' already exists")
             await loadDelegates()
             return
         }
         
         // Create a new reminder for the delegate
+        // Title = short name (for hashtag), Notes = full name (for display)
         let reminder = EKReminder(eventStore: eventStore)
-        reminder.title = name.trimmingCharacters(in: .whitespaces)
+        reminder.title = trimmedShortName
+        reminder.notes = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
         reminder.calendar = calendar
         
         do {
             try eventStore.save(reminder, commit: true)
-            print("✅ Added delegate: \(name)")
+            print("✅ Added delegate: \(fullName.isEmpty ? trimmedShortName : fullName) (\(trimmedShortName))")
             await loadDelegates()
         } catch {
             lastError = "Failed to add delegate: \(error.localizedDescription)"
@@ -1231,7 +1240,7 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func removeDelegate(_ name: String) async {
+    func removeDelegate(_ delegate: Delegate) async {
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
         if #available(iOS 17.0, macOS 14.0, *) {
@@ -1260,14 +1269,14 @@ class RemindersManager: ObservableObject {
             }
         }
         
-        guard let reminder = reminders.first(where: { $0.title?.lowercased() == name.lowercased() }) else {
+        guard let reminder = reminders.first(where: { $0.title?.lowercased() == delegate.shortName.lowercased() }) else {
             lastError = "Delegate not found"
             return
         }
         
         do {
             try eventStore.remove(reminder, commit: true)
-            print("✅ Removed delegate: \(name)")
+            print("✅ Removed delegate: \(delegate.displayName)")
             await loadDelegates()
         } catch {
             lastError = "Failed to remove delegate: \(error.localizedDescription)"
@@ -1275,8 +1284,9 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func updateDelegate(oldName: String, newName: String) async {
-        guard !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    func updateDelegate(_ delegate: Delegate, newShortName: String, newFullName: String) async {
+        let trimmedShortName = newShortName.trimmingCharacters(in: .whitespaces)
+        guard !trimmedShortName.isEmpty else { return }
         
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
@@ -1306,16 +1316,26 @@ class RemindersManager: ObservableObject {
             }
         }
         
-        guard let reminder = reminders.first(where: { $0.title?.lowercased() == oldName.lowercased() }) else {
+        guard let reminder = reminders.first(where: { $0.title?.lowercased() == delegate.shortName.lowercased() }) else {
             lastError = "Delegate not found"
             return
         }
         
-        reminder.title = newName.trimmingCharacters(in: .whitespaces)
+        // Check if new short name conflicts with existing delegate
+        if trimmedShortName.lowercased() != delegate.shortName.lowercased() {
+            if reminders.contains(where: { $0.title?.lowercased() == trimmedShortName.lowercased() }) {
+                lastError = "A delegate with short name '\(trimmedShortName)' already exists"
+                print("❌ \(lastError ?? "")")
+                return
+            }
+        }
+        
+        reminder.title = trimmedShortName
+        reminder.notes = newFullName.trimmingCharacters(in: .whitespacesAndNewlines)
         
         do {
             try eventStore.save(reminder, commit: true)
-            print("✅ Updated delegate: \(oldName) → \(newName)")
+            print("✅ Updated delegate: \(delegate.displayName) → \(newFullName.isEmpty ? trimmedShortName : newFullName) (\(trimmedShortName))")
             await loadDelegates()
         } catch {
             lastError = "Failed to update delegate: \(error.localizedDescription)"

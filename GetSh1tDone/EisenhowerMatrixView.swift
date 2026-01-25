@@ -46,7 +46,7 @@ struct EisenhowerMatrixView: View {
                         Toggle("Today", isOn: $showOnlyToday)
                             .labelsHidden()
                             .toggleStyle(.switch)
-                            .onChange(of: showOnlyToday) { newValue in
+                            .onChange(of: showOnlyToday) { oldValue, newValue in
                                 if newValue {
                                     showOnlyThisWeek = false
                                 }
@@ -65,7 +65,7 @@ struct EisenhowerMatrixView: View {
                         Toggle("This Week", isOn: $showOnlyThisWeek)
                             .labelsHidden()
                             .toggleStyle(.switch)
-                            .onChange(of: showOnlyThisWeek) { newValue in
+                            .onChange(of: showOnlyThisWeek) { oldValue, newValue in
                                 if newValue {
                                     showOnlyToday = false
                                 }
@@ -243,8 +243,8 @@ struct EisenhowerMatrixView: View {
             }
         }
         #endif
-        .onChange(of: remindersManager.lastError) { error in
-            if let error = error {
+        .onChange(of: remindersManager.lastError) { oldError, newError in
+            if let error = newError {
                 showingError = error
             }
         }
@@ -656,7 +656,7 @@ struct AddTaskView: View {
     @State private var tags: String = ""
     @State private var dueDate: Date?
     @State private var hasDueDate: Bool = false
-    @State private var selectedDelegate: String?
+    @State private var selectedDelegate: Delegate?
     @State private var selectedTimePeriod: String = ""
     
     var body: some View {
@@ -678,7 +678,7 @@ struct AddTaskView: View {
                         Text("This Quarter").tag("#thisquarter")
                     }
                     .pickerStyle(.menu)
-                    .onChange(of: selectedTimePeriod) { newPeriod in
+                    .onChange(of: selectedTimePeriod) { oldPeriod, newPeriod in
                         // Update tags when time period changes
                         updateTagsWithTimePeriod(newPeriod)
                     }
@@ -692,13 +692,13 @@ struct AddTaskView: View {
                 // Delegate section
                 Section("Delegate") {
                     Picker("Assign to", selection: $selectedDelegate) {
-                        Text("None").tag(nil as String?)
-                        ForEach(remindersManager.delegates, id: \.self) { delegate in
-                            Text(delegate).tag(delegate as String?)
+                        Text("None").tag(nil as Delegate?)
+                        ForEach(remindersManager.delegates) { delegate in
+                            Text(delegate.displayName).tag(delegate as Delegate?)
                         }
                     }
                     .pickerStyle(.menu)
-                    .onChange(of: selectedDelegate) { newDelegate in
+                    .onChange(of: selectedDelegate) { oldDelegate, newDelegate in
                         // Remove old delegate tag
                         var updatedTags = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
@@ -708,13 +708,13 @@ struct AddTaskView: View {
                         // Remove all delegate tags
                         updatedTags = updatedTags.filter { tag in
                             !remindersManager.delegates.contains { delegate in
-                                tag.lowercased() == "#\(delegate.lowercased())"
+                                tag.lowercased() == delegate.hashtag.lowercased()
                             }
                         }
                         
                         // Add new delegate tag if selected
                         if let delegate = newDelegate {
-                            updatedTags.append("#\(delegate)")
+                            updatedTags.append(delegate.hashtag)
                         }
                         
                         tags = updatedTags.joined(separator: " ")
@@ -937,7 +937,7 @@ struct TaskDetailView: View {
     @State private var tags: String
     @State private var dueDate: Date?
     @State private var hasDueDate: Bool
-    @State private var selectedDelegate: String?
+    @State private var selectedDelegate: Delegate?
     
     init(task: TaskItem, remindersManager: RemindersManager) {
         self.task = task
@@ -964,7 +964,7 @@ struct TaskDetailView: View {
         let allTags = task.tags + allTagsFromNotes
         let currentDelegate = remindersManager.delegates.first { delegate in
             allTags.contains { tag in
-                tag.lowercased() == "#\(delegate.lowercased())"
+                tag.lowercased() == delegate.hashtag.lowercased()
             }
         }
         _selectedDelegate = State(initialValue: currentDelegate)
@@ -1037,13 +1037,13 @@ struct TaskDetailView: View {
                 // Delegate section
                 Section("Delegate") {
                     Picker("Assign to", selection: $selectedDelegate) {
-                        Text("None").tag(nil as String?)
-                        ForEach(remindersManager.delegates, id: \.self) { delegate in
-                            Text(delegate).tag(delegate as String?)
+                        Text("None").tag(nil as Delegate?)
+                        ForEach(remindersManager.delegates) { delegate in
+                            Text(delegate.displayName).tag(delegate as Delegate?)
                         }
                     }
                     .pickerStyle(.menu)
-                    .onChange(of: selectedDelegate) { newDelegate in
+                    .onChange(of: selectedDelegate) { oldDelegate, newDelegate in
                         // Remove old delegate tag
                         var updatedTags = tags.components(separatedBy: " ")
                             .filter { $0.hasPrefix("#") }
@@ -1053,13 +1053,13 @@ struct TaskDetailView: View {
                         // Remove all delegate tags
                         updatedTags = updatedTags.filter { tag in
                             !remindersManager.delegates.contains { delegate in
-                                tag.lowercased() == "#\(delegate.lowercased())"
+                                tag.lowercased() == delegate.hashtag.lowercased()
                             }
                         }
                         
                         // Add new delegate tag if selected
                         if let delegate = newDelegate {
-                            updatedTags.append("#\(delegate)")
+                            updatedTags.append(delegate.hashtag)
                         }
                         
                         tags = updatedTags.joined(separator: " ")
@@ -1178,7 +1178,7 @@ struct TaskDetailView: View {
             
             selectedDelegate = remindersManager.delegates.first { delegate in
                 allTags.contains { tag in
-                    tag.lowercased() == "#\(delegate.lowercased())"
+                    tag.lowercased() == delegate.hashtag.lowercased()
                 }
             }
         }

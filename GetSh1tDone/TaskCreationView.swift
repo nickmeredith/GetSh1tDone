@@ -5,7 +5,7 @@ struct TaskCreationView: View {
     @State private var currentStep: QuestionStep = .enterTask
     @State private var taskDescription: String = ""
     @State private var canDelegate: Bool?
-    @State private var selectedDelegate: String?
+    @State private var selectedDelegate: Delegate?
     @State private var isImportant: Bool?
     @State private var isUrgent: Bool?
     @State private var urgentForYou: Bool?
@@ -136,9 +136,9 @@ struct TaskCreationView: View {
                         }
                         
                         Picker("Delegate", selection: $selectedDelegate) {
-                            Text("Select...").tag(nil as String?)
-                            ForEach(remindersManager.delegates, id: \.self) { delegate in
-                                Text(delegate).tag(delegate as String?)
+                            Text("Select...").tag(nil as Delegate?)
+                            ForEach(remindersManager.delegates) { delegate in
+                                Text(delegate.displayName).tag(delegate as Delegate?)
                             }
                         }
                         .pickerStyle(.menu)
@@ -354,9 +354,9 @@ struct TaskCreationView: View {
                         }
                         
                         Picker("Delegate", selection: $selectedDelegate) {
-                            Text("Select...").tag(nil as String?)
-                            ForEach(remindersManager.delegates, id: \.self) { delegate in
-                                Text(delegate).tag(delegate as String?)
+                            Text("Select...").tag(nil as Delegate?)
+                            ForEach(remindersManager.delegates) { delegate in
+                                Text(delegate.displayName).tag(delegate as Delegate?)
                             }
                         }
                         .pickerStyle(.menu)
@@ -688,7 +688,7 @@ struct TaskCreationView: View {
     
     private func createDelegatedTask() {
         guard let delegate = selectedDelegate else { return }
-        let tags = ["#\(delegate)"]
+        let tags = [delegate.hashtag]
         createTask(quadrant: .delegate, tags: tags)
     }
     

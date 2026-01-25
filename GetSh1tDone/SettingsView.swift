@@ -23,9 +23,9 @@ struct SettingsView: View {
 struct DelegatesSettingsView: View {
     @ObservedObject var remindersManager: RemindersManager
     @State private var showingAddDelegate = false
-    @State private var newDelegateName = ""
-    @State private var editingDelegate: String?
-    @State private var editedName = ""
+    @State private var editingDelegate: Delegate?
+    @State private var editedShortName = ""
+    @State private var editedFullName = ""
     
     var body: some View {
         Form {
@@ -35,38 +35,53 @@ struct DelegatesSettingsView: View {
                         .foregroundColor(.secondary)
                         .font(.caption)
                 } else {
-                    ForEach(remindersManager.delegates, id: \.self) { delegate in
-                        if editingDelegate == delegate {
+                    ForEach(remindersManager.delegates) { delegate in
+                        if editingDelegate?.id == delegate.id {
                             // Edit mode
-                            HStack {
-                                TextField("Delegate name", text: $editedName)
+                            VStack(alignment: .leading, spacing: 12) {
+                                TextField("Short Name (for hashtag)", text: $editedShortName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .autocapitalization(.none)
+                                
+                                TextField("Full Name (optional)", text: $editedFullName)
                                     .textFieldStyle(.roundedBorder)
                                 
-                                Button("Save") {
-                                    Task {
-                                        await remindersManager.updateDelegate(oldName: delegate, newName: editedName)
-                                        editingDelegate = nil
-                                        editedName = ""
+                                HStack {
+                                    Button("Save") {
+                                        Task {
+                                            await remindersManager.updateDelegate(delegate, newShortName: editedShortName, newFullName: editedFullName)
+                                            editingDelegate = nil
+                                            editedShortName = ""
+                                            editedFullName = ""
+                                        }
                                     }
+                                    .buttonStyle(.borderedProminent)
+                                    
+                                    Button("Cancel") {
+                                        editingDelegate = nil
+                                        editedShortName = ""
+                                        editedFullName = ""
+                                    }
+                                    .buttonStyle(.bordered)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                
-                                Button("Cancel") {
-                                    editingDelegate = nil
-                                    editedName = ""
-                                }
-                                .buttonStyle(.bordered)
                             }
                         } else {
                             // Display mode
                             HStack {
-                                Text(delegate)
-                                    .font(.body)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(delegate.displayName)
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                    Text("Tag: \(delegate.hashtag)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                                 
                                 Spacer()
                                 
                                 Button(action: {
-                                    editedName = delegate
+                                    editedShortName = delegate.shortName
+                                    editedFullName = delegate.fullName
                                     editingDelegate = delegate
                                 }) {
                                     Image(systemName: "pencil")
@@ -112,14 +127,23 @@ struct DelegatesSettingsView: View {
 struct AddDelegateView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var remindersManager: RemindersManager
-    @State private var delegateName = ""
+    @State private var shortName = ""
+    @State private var fullName = ""
     
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("New Delegate")) {
-                    TextField("Delegate name", text: $delegateName)
+                    TextField("Short Name (for hashtag)", text: $shortName)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                    
+                    TextField("Full Name (optional)", text: $fullName)
                         .autocapitalization(.words)
+                }
+                
+                Section(footer: Text("Short name is used for the hashtag (e.g., #JohnD). Full name is displayed in the delegate list.")) {
+                    EmptyView()
                 }
             }
             .navigationTitle("Add Delegate")
@@ -133,16 +157,16 @@ struct AddDelegateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            await remindersManager.addDelegate(delegateName)
+                            await remindersManager.addDelegate(shortName: shortName, fullName: fullName)
                             dismiss()
                         }
                     }
-                    .disabled(delegateName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(shortName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
         #if os(macOS)
-        .frame(width: 400, height: 200)
+        .frame(width: 400, height: 250)
         #endif
     }
 }
