@@ -26,9 +26,9 @@ struct ContentView: View {
                 }
                 .tag(2)
             
-            TaskChallengeView(remindersManager: remindersManager)
+            TaskCreationView(remindersManager: remindersManager)
                 .tabItem {
-                    Label("Challenges", systemImage: "lightbulb")
+                    Label("Task", systemImage: "plus.circle.fill")
                 }
                 .tag(3)
             

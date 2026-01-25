@@ -157,7 +157,7 @@ class RemindersManager: ObservableObject {
                 ]
                 
                 var hasTimePeriodTag = false
-                for (tagText, tag) in timePeriodTags {
+                for (tagText, _) in timePeriodTags {
                     // Check multiple variations: #today, ##today, # today, etc.
                     let searchPatterns = [
                         "#\(tagText)",           // #today
@@ -750,7 +750,7 @@ class RemindersManager: ObservableObject {
     }
     
     /// Finds the iCloud Reminders calendar
-    private func getiCloudRemindersCalendar() -> EKCalendar? {
+    private func getBacklogRemindersCalendar() -> EKCalendar? {
         // Get all reminder calendars
         let calendars = eventStore.calendars(for: .reminder)
         
@@ -759,6 +759,22 @@ class RemindersManager: ObservableObject {
         for calendar in calendars {
             print("  - \(calendar.title) (Source: \(calendar.source.title), Type: \(calendar.source.sourceType.rawValue))")
         }
+        
+        // First, look specifically for "Backlog" list
+        for calendar in calendars {
+            if calendar.title.lowercased() == "backlog" {
+                print("✅ Found Backlog calendar: \(calendar.title) from source: \(calendar.source.title)")
+                return calendar
+            }
+        }
+        
+        // If no Backlog found, use the iCloud calendar logic as fallback
+        return getiCloudRemindersCalendar()
+    }
+    
+    private func getiCloudRemindersCalendar() -> EKCalendar? {
+        // Get all reminder calendars
+        let calendars = eventStore.calendars(for: .reminder)
         
         // Look for iCloud calendar first (CalDAV source with iCloud in name)
         for calendar in calendars {
@@ -823,8 +839,11 @@ class RemindersManager: ObservableObject {
             return
         }
         
-        // Get the iCloud calendar for reminders, fallback to default
-        var calendar = getiCloudRemindersCalendar()
+        // Get the Backlog calendar for reminders, fallback to iCloud, then default
+        var calendar = getBacklogRemindersCalendar()
+        if calendar == nil {
+            calendar = getiCloudRemindersCalendar()
+        }
         if calendar == nil {
             calendar = eventStore.defaultCalendarForNewReminders()
         }
@@ -838,9 +857,18 @@ class RemindersManager: ObservableObject {
         
         print("📅 Using calendar: \(calendar.title) (Source: \(calendar.source.title))")
         
+        // Validate task title is not empty
+        let trimmedTitle = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            let errorMsg = "Task title cannot be empty"
+            print("❌ \(errorMsg)")
+            lastError = errorMsg
+            return
+        }
+        
         // Create a new reminder in EventKit
         let reminder = EKReminder(eventStore: eventStore)
-        reminder.title = task.title
+        reminder.title = trimmedTitle
         
         // Build notes with quadrant hashtag and tags
         // Step 1: Deduplicate tags from task.tags (case-insensitive)
@@ -901,6 +929,11 @@ class RemindersManager: ObservableObject {
             notes += "\n" + finalUniqueTags.joined(separator: " ")
         }
         reminder.notes = notes
+        
+        // Debug: Print tag information
+        print("🏷️ Task tags array: \(task.tags)")
+        print("🏷️ Final unique tags: \(finalUniqueTags)")
+        print("🏷️ Final notes with tags: \(notes)")
         reminder.calendar = calendar
         
         // Set due date if provided
@@ -914,12 +947,21 @@ class RemindersManager: ObservableObject {
         do {
             try eventStore.save(reminder, commit: true)
             print("✅ Successfully created reminder: \(task.title)")
+            print("📝 Reminder ID: \(reminder.calendarItemIdentifier)")
+            print("📅 Calendar: \(reminder.calendar?.title ?? "unknown")")
+            print("🏷️ Notes: \(reminder.notes ?? "none")")
             lastError = nil
+            // Reload reminders to ensure sync
             await loadReminders()
+            print("🔄 Reminders reloaded after task creation")
         } catch {
             let errorMsg = "Error creating reminder: \(error.localizedDescription)"
-            print(errorMsg)
+            print("❌ \(errorMsg)")
             print("Full error: \(error)")
+            if let nsError = error as NSError? {
+                print("Error domain: \(nsError.domain), code: \(nsError.code)")
+                print("Error userInfo: \(nsError.userInfo)")
+            }
             lastError = errorMsg
         }
     }

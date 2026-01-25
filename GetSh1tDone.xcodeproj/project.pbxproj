@@ -13,6 +13,7 @@
 		3895B8FEB555 /* EisenhowerMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A134FA4261 /* EisenhowerMatrixView.swift */; };
 		46998B88C258 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4735879CE44 /* Assets.xcassets */; };
 		57E12144723E /* GetSh1tDoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E497FBF55B68 /* GetSh1tDoneApp.swift */; };
+		60BE2D5F2F2582F00049ABBF /* TaskCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */; };
 		60DE69A82F1C3E2100055268 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DE69A72F1C3E2100055268 /* SettingsView.swift */; };
 		75B449C1E4FA /* PlanningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* PlanningView.swift */; };
 		AE8DBB489392 /* TaskChallengeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AF144261B /* TaskChallengeView.swift */; };
@@ -24,6 +25,7 @@
 		113ED6A8417E /* GetSh1tDone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GetSh1tDone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		11A134FA4261 /* EisenhowerMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EisenhowerMatrixView.swift; sourceTree = "<group>"; };
 		4AEB726BF86C /* GetSh1tDone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GetSh1tDone.entitlements; sourceTree = "<group>"; };
+		60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCreationView.swift; sourceTree = "<group>"; };
 		60DE69A72F1C3E2100055268 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7984FFD71742 /* TaskQuadrant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskQuadrant.swift; sourceTree = "<group>"; };
 		988AF144261B /* TaskChallengeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskChallengeView.swift; sourceTree = "<group>"; };
@@ -77,6 +79,7 @@
 				E4735879CE44 /* Assets.xcassets */,
 				C4BCB0787903 /* Info.plist */,
 				4AEB726BF86C /* GetSh1tDone.entitlements */,
+				60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */,
 			);
 			path = GetSh1tDone;
 			sourceTree = "<group>";
@@ -109,7 +112,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1640;
 			};
 			buildConfigurationList = 8B33EDD25355 /* Build configuration list for PBXProject "GetSh1tDone" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -145,6 +148,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				60BE2D5F2F2582F00049ABBF /* TaskCreationView.swift in Sources */,
 				57E12144723E /* GetSh1tDoneApp.swift in Sources */,
 				0512C208C122 /* ContentView.swift in Sources */,
 				1FC943C93385 /* RemindersManager.swift in Sources */,
@@ -168,7 +172,6 @@
 				CODE_SIGN_ENTITLEMENTS = GetSh1tDone/GetSh1tDone.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = JHH35S7623;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GetSh1tDone/Info.plist;
@@ -200,7 +203,6 @@
 				CODE_SIGN_ENTITLEMENTS = GetSh1tDone/GetSh1tDone.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = JHH35S7623;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GetSh1tDone/Info.plist;
@@ -260,6 +262,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = JHH35S7623;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -319,6 +322,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = JHH35S7623;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
