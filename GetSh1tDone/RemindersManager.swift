@@ -139,8 +139,9 @@ class RemindersManager: ObservableObject {
             // First, try to extract quadrant from tags
             quadrant = extractQuadrant(from: reminder)
             
-            // If no quadrant tag found, check if it has a time period tag
-            // If it does, assign it to Schedule as default so it shows up in Plan view
+            // If no quadrant tag found, check if it has a time period tag or challenge tag
+            // If it has a time period tag, assign it to Schedule as default so it shows up in Plan view
+            // If it has a challenge tag, assign it to Bin / Challenge quadrant
             if quadrant == nil {
                 let notes = reminder.notes ?? ""
                 let title = reminder.title ?? ""
@@ -148,49 +149,89 @@ class RemindersManager: ObservableObject {
                 let combinedText = "\(notes) \(title) \(calendarName)"
                 let lowercased = combinedText.lowercased()
                 
-                // Check for time period tags with variations (similar to quadrant tag detection)
-                let timePeriodTags = [
-                    ("today", "#today"),
-                    ("thisweek", "#thisweek"),
-                    ("thismonth", "#thismonth"),
-                    ("thisquarter", "#thisquarter")
+                // First check for challenge tag
+                let challengePatterns = [
+                    "#challenge",
+                    "##challenge",
+                    "# challenge",
+                    "# #challenge",
+                    "## challenge"
                 ]
                 
-                var hasTimePeriodTag = false
-                for (tagText, _) in timePeriodTags {
-                    // Check multiple variations: #today, ##today, # today, etc.
-                    let searchPatterns = [
-                        "#\(tagText)",           // #today
-                        "##\(tagText)",          // ##today
-                        "# \(tagText)",          // # today
-                        "# #\(tagText)",         // # #today
-                        "## \(tagText)",         // ## today
-                        "#  \(tagText)",         // #  today
-                        "#  #\(tagText)"         // #  #today
-                    ]
-                    
-                    for pattern in searchPatterns {
-                        if lowercased.contains(pattern.lowercased()) {
-                            hasTimePeriodTag = true
-                            break
-                        }
+                var hasChallengeTag = false
+                for pattern in challengePatterns {
+                    if lowercased.contains(pattern.lowercased()) {
+                        hasChallengeTag = true
+                        break
                     }
-                    if hasTimePeriodTag { break }
                 }
                 
-                if hasTimePeriodTag {
-                    // Assign to Schedule as default quadrant for tasks with time period tags
-                    quadrant = .schedule
-                    print("📅 Task '\(reminder.title ?? "")' has time period tag but no quadrant tag - assigning to Schedule")
+                if hasChallengeTag {
+                    // Assign to Bin / Challenge quadrant for tasks with challenge tag
+                    quadrant = .bin
+                    print("🎯 Task '\(reminder.title ?? "")' has #challenge tag - assigning to Bin / Challenge")
+                } else {
+                    // Check for time period tags with variations (similar to quadrant tag detection)
+                    let timePeriodTags = [
+                        ("today", "#today"),
+                        ("thisweek", "#thisweek"),
+                        ("thismonth", "#thismonth"),
+                        ("thisquarter", "#thisquarter")
+                    ]
+                    
+                    var hasTimePeriodTag = false
+                    for (tagText, _) in timePeriodTags {
+                        // Check multiple variations: #today, ##today, # today, etc.
+                        let searchPatterns = [
+                            "#\(tagText)",           // #today
+                            "##\(tagText)",          // ##today
+                            "# \(tagText)",          // # today
+                            "# #\(tagText)",         // # #today
+                            "## \(tagText)",         // ## today
+                            "#  \(tagText)",         // #  today
+                            "#  #\(tagText)"         // #  #today
+                        ]
+                        
+                        for pattern in searchPatterns {
+                            if lowercased.contains(pattern.lowercased()) {
+                                hasTimePeriodTag = true
+                                break
+                            }
+                        }
+                        if hasTimePeriodTag { break }
+                    }
+                    
+                    if hasTimePeriodTag {
+                        // Assign to Schedule as default quadrant for tasks with time period tags
+                        quadrant = .schedule
+                        print("📅 Task '\(reminder.title ?? "")' has time period tag but no quadrant tag - assigning to Schedule")
+                    }
                 }
             }
             
-            // Skip if still no quadrant (no quadrant tag and no time period tag)
+            // Skip if still no quadrant (no quadrant tag, no challenge tag, and no time period tag)
             guard let quadrant = quadrant else {
                 continue
             }
             
-            let task = TaskItem(reminder: reminder, quadrant: quadrant)
+            var task = TaskItem(reminder: reminder, quadrant: quadrant)
+            
+            // Normalize tags: ensure tags are in both notes and tags field, remove duplicates
+            task = normalizeTaskTagsAndNotes(task)
+            
+            // Update the reminder in EventKit if normalization changed anything
+            if let reminder = task.reminder {
+                let currentNotes = reminder.notes ?? ""
+                if currentNotes != task.notes {
+                    reminder.notes = task.notes
+                    do {
+                        try eventStore.save(reminder, commit: false)
+                        print("🔄 Updated reminder notes for '\(task.title)' to sync tags")
+                    } catch {
+                        print("⚠️ Failed to update reminder notes: \(error.localizedDescription)")
+                    }
+                }
+            }
             
             quadrantCounts[quadrant, default: 0] += 1
             
@@ -220,7 +261,124 @@ class RemindersManager: ObservableObject {
             print("   \(sample)")
         }
         
+        // Commit all reminder updates at once
+        do {
+            try eventStore.commit()
+            print("✅ Committed all reminder updates")
+        } catch {
+            print("⚠️ Failed to commit reminder updates: \(error.localizedDescription)")
+        }
+        
         tasks = loadedTasks
+    }
+    
+    /// Normalizes task tags and notes to ensure:
+    /// 1. All tags from notes are in tags array
+    /// 2. All tags from tags array are in notes
+    /// 3. No duplicate hashtags in notes
+    /// 4. No duplicate hashtags in tags array
+    private func normalizeTaskTagsAndNotes(_ task: TaskItem) -> TaskItem {
+        var normalizedTask = task
+        
+        // Step 1: Extract all unique tags from notes (case-insensitive deduplication)
+        let tagsFromNotes = TaskItem.extractTags(from: task.notes)
+        var seenTagsFromNotes = Set<String>()
+        let uniqueTagsFromNotes = tagsFromNotes.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if seenTagsFromNotes.contains(lower) {
+                return nil
+            }
+            seenTagsFromNotes.insert(lower)
+            return tag
+        }
+        
+        // Step 2: Combine tags from both sources (notes and tags array)
+        var allUniqueTags = uniqueTagsFromNotes
+        var seenAllTags = Set<String>()
+        for tag in uniqueTagsFromNotes {
+            seenAllTags.insert(tag.lowercased())
+        }
+        
+        // Add tags from tags array that aren't already in notes
+        for tag in task.tags {
+            let lower = tag.lowercased()
+            if !seenAllTags.contains(lower) {
+                allUniqueTags.append(tag)
+                seenAllTags.insert(lower)
+            }
+        }
+        
+        // Step 3: Final deduplication pass (case-insensitive)
+        var finalSeenTags = Set<String>()
+        let finalUniqueTags = allUniqueTags.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            if finalSeenTags.contains(lower) {
+                return nil
+            }
+            finalSeenTags.insert(lower)
+            return tag
+        }
+        
+        // Step 4: Extract non-hashtag content from notes (user's actual notes)
+        // Remove all hashtags to get just the user content
+        var userNotes = task.notes
+        
+        // Remove all hashtag patterns (handles #tag, ##tag, # tag, etc.)
+        let hashtagPattern = #"#+\s*#?\w+"#
+        if let regex = try? NSRegularExpression(pattern: hashtagPattern, options: []) {
+            let range = NSRange(userNotes.startIndex..., in: userNotes)
+            userNotes = regex.stringByReplacingMatches(
+                in: userNotes,
+                options: [],
+                range: range,
+                withTemplate: ""
+            )
+        }
+        
+        // Clean up: remove extra whitespace and newlines
+        userNotes = userNotes
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\n\n\n+", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Step 5: Rebuild notes with user content + quadrant hashtag + all unique tags
+        // Format tags in a way that Apple Reminders might recognize
+        let quadrantHashtag = task.quadrant.hashtag
+        var rebuiltNotes = userNotes
+        
+        // Always add quadrant hashtag
+        if !rebuiltNotes.isEmpty {
+            rebuiltNotes += "\n\n"
+        }
+        rebuiltNotes += quadrantHashtag
+        
+        // Always add tags if we have any
+        // Format: Put tags on separate lines to help Apple Reminders recognize them
+        if !finalUniqueTags.isEmpty {
+            rebuiltNotes += "\n"
+            // Add each tag on its own line - some versions of Reminders recognize this better
+            for (index, tag) in finalUniqueTags.enumerated() {
+                if index > 0 {
+                    rebuiltNotes += " "
+                }
+                rebuiltNotes += tag
+            }
+        }
+        
+        // Debug logging for normalization
+        print("🔧 Normalization details:")
+        print("   - Original notes: '\(task.notes)'")
+        print("   - Original tags: \(task.tags)")
+        print("   - Tags from notes: \(uniqueTagsFromNotes)")
+        print("   - Final unique tags: \(finalUniqueTags)")
+        print("   - User notes (after removing hashtags): '\(userNotes)'")
+        print("   - Rebuilt notes: '\(rebuiltNotes)'")
+        
+        // Update the task with normalized data
+        normalizedTask.notes = rebuiltNotes
+        normalizedTask.tags = finalUniqueTags
+        
+        return normalizedTask
     }
     
     private func extractQuadrant(from reminder: EKReminder) -> Quadrant? {
@@ -235,11 +393,13 @@ class RemindersManager: ObservableObject {
         // Check for each quadrant hashtag using flexible patterns
         // Priority order: DoNow > Delegate > Schedule > Bin
         // If multiple quadrant tags exist, uses priority order (first match wins)
+        // Also check for #challenge tag which maps to Bin / Challenge quadrant
         let quadrantChecks: [(String, Quadrant)] = [
             ("donow", .doNow),        // Highest priority
             ("delegate", .delegate),
             ("schedule", .schedule),
-            ("bin", .bin)             // Lowest priority
+            ("bin", .bin),            // Bin quadrant
+            ("challenge", .bin)        // Challenge tag also maps to Bin / Challenge quadrant
         ]
         
         // First, try simple contains check (most permissive)
@@ -870,70 +1030,36 @@ class RemindersManager: ObservableObject {
         let reminder = EKReminder(eventStore: eventStore)
         reminder.title = trimmedTitle
         
-        // Build notes with quadrant hashtag and tags
-        // Step 1: Deduplicate tags from task.tags (case-insensitive)
-        var seenTags = Set<String>()
-        let uniqueTagsFromTask = task.tags.compactMap { tag -> String? in
-            let lower = tag.lowercased()
-            if seenTags.contains(lower) {
-                return nil
-            }
-            seenTags.insert(lower)
-            return tag
+        // Normalize task to ensure tags are in both notes and tags field, with no duplicates
+        let normalizedTask = normalizeTaskTagsAndNotes(task)
+        
+        // Use normalized notes - this ensures all tags are in the notes field
+        let finalNotes = normalizedTask.notes
+        reminder.notes = finalNotes
+        
+        // Ensure notes is not nil (EventKit requires non-nil)
+        if reminder.notes == nil {
+            reminder.notes = ""
         }
         
-        // Step 2: Start with user's notes (which may already contain tags from AddTaskView)
-        var notes = task.notes
-        
-        // Step 3: Extract existing tags from notes and deduplicate
-        let existingTagsInNotes = TaskItem.extractTags(from: notes)
-        var seenTagsInNotes = Set<String>()
-        let uniqueTagsInNotes = existingTagsInNotes.compactMap { tag -> String? in
-            let lower = tag.lowercased()
-            if seenTagsInNotes.contains(lower) {
-                return nil
-            }
-            seenTagsInNotes.insert(lower)
-            return tag
+        // Try to set tags using iOS 17+ API if available
+        // Note: EventKit doesn't have a direct tags property, but we can try using URL scheme or other methods
+        // For now, tags are stored in notes as hashtags, which is the standard workaround
+        // Apple Reminders' native tag field may not be accessible via EventKit API
+        if #available(iOS 17.0, macOS 14.0, *) {
+            // iOS 17+ might have tag support, but EventKit API doesn't expose it directly
+            // Tags are stored in notes as hashtags which Apple Reminders can parse
+            print("📱 iOS 17+ detected - tags stored in notes as hashtags")
         }
-        
-        // Step 4: Combine tags from task.tags and notes, ensuring all tags are present and deduplicated
-        var allTags = uniqueTagsFromTask
-        for existingTag in uniqueTagsInNotes {
-            if !allTags.contains(where: { $0.lowercased() == existingTag.lowercased() }) {
-                allTags.append(existingTag)
-            }
-        }
-        
-        // Step 5: Final deduplication pass (case-insensitive)
-        var finalSeenTags = Set<String>()
-        let finalUniqueTags = allTags.compactMap { tag -> String? in
-            let lower = tag.lowercased()
-            if finalSeenTags.contains(lower) {
-                return nil
-            }
-            finalSeenTags.insert(lower)
-            return tag
-        }
-        
-        // Step 6: Build final notes: user notes + quadrant hashtag + all deduplicated tags
-        // Remove quadrant hashtag from notes if it's already there
-        let quadrantHashtag = task.quadrant.hashtag
-        notes = notes.replacingOccurrences(of: quadrantHashtag, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if !notes.isEmpty {
-            notes += "\n\n"
-        }
-        notes += quadrantHashtag
-        if !finalUniqueTags.isEmpty {
-            notes += "\n" + finalUniqueTags.joined(separator: " ")
-        }
-        reminder.notes = notes
         
         // Debug: Print tag information
-        print("🏷️ Task tags array: \(task.tags)")
-        print("🏷️ Final unique tags: \(finalUniqueTags)")
-        print("🏷️ Final notes with tags: \(notes)")
+        print("🏷️ Original task:")
+        print("   - Tags: \(task.tags)")
+        print("   - Notes: \(task.notes)")
+        print("🏷️ Normalized task:")
+        print("   - Tags: \(normalizedTask.tags)")
+        print("   - Notes: \(normalizedTask.notes)")
+        print("🏷️ Reminder notes being saved: \(reminder.notes ?? "nil")")
         reminder.calendar = calendar
         
         // Set due date if provided
@@ -949,7 +1075,14 @@ class RemindersManager: ObservableObject {
             print("✅ Successfully created reminder: \(task.title)")
             print("📝 Reminder ID: \(reminder.calendarItemIdentifier)")
             print("📅 Calendar: \(reminder.calendar?.title ?? "unknown")")
-            print("🏷️ Notes: \(reminder.notes ?? "none")")
+            print("🏷️ Notes saved to reminder: \(reminder.notes ?? "none")")
+            print("🏷️ Tags in normalized task: \(normalizedTask.tags)")
+            
+            // Verify the reminder was saved correctly by reading it back
+            if let savedReminder = eventStore.calendarItem(withIdentifier: reminder.calendarItemIdentifier) as? EKReminder {
+                print("🔍 Verification - Saved reminder notes: \(savedReminder.notes ?? "none")")
+            }
+            
             lastError = nil
             // Reload reminders to ensure sync
             await loadReminders()

@@ -14,8 +14,10 @@ struct TaskCreationView: View {
     @State private var taskDate: Date?
     @State private var timePeriod: TimePeriodChoice?
     @State private var reallyNeedsToBeDone: Bool?
+    @State private var importantForSomeoneElse: Bool?
     @State private var errorMessage: String?
     @State private var isCreatingTask: Bool = false
+    @State private var detectedDateFromDescription: Date?
     
     enum QuestionStep {
         case enterTask
@@ -30,6 +32,7 @@ struct TaskCreationView: View {
         case selectDate
         case timePeriod
         case reallyNeedsToBeDone
+        case importantForSomeoneElse
         case complete
     }
     
@@ -57,6 +60,11 @@ struct TaskCreationView: View {
                         
                         if !taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Button("Continue") {
+                                // Detect date from description when user continues
+                                detectedDateFromDescription = detectDate(from: taskDescription)
+                                if detectedDateFromDescription != nil {
+                                    print("📅 Detected date from description: \(detectedDateFromDescription!)")
+                                }
                                 currentStep = .canDelegate
                             }
                             .buttonStyle(.borderedProminent)
@@ -451,7 +459,9 @@ struct TaskCreationView: View {
                             
                             Button("No") {
                                 needsDate = false
-                                createTask(quadrant: .schedule, tags: [], dueDate: nil)
+                                // Use detected date if available, otherwise nil
+                                let finalDate = detectedDateFromDescription
+                                createTask(quadrant: .schedule, tags: [], dueDate: finalDate)
                             }
                             .buttonStyle(.bordered)
                             .frame(maxWidth: .infinity)
@@ -481,21 +491,80 @@ struct TaskCreationView: View {
                                 .cornerRadius(8)
                         }
                         
+                        // Show detected date if available
+                        if let detectedDate = detectedDateFromDescription {
+                            Text("📅 Detected date: \(formatDate(detectedDate))")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                                .padding()
+                        }
+                        
                         DatePicker("Due Date", selection: Binding(
-                            get: { taskDate ?? Date() },
+                            get: { taskDate ?? detectedDateFromDescription ?? Date() },
                             set: { taskDate = $0 }
                         ), displayedComponents: [.date])
                         .datePickerStyle(.graphical)
                         .padding()
                         
                         Button("Create Task") {
-                            createTask(quadrant: .schedule, tags: [], dueDate: taskDate)
+                            // Use taskDate if set, otherwise use detected date
+                            let finalDate = taskDate ?? detectedDateFromDescription
+                            createTask(quadrant: .schedule, tags: [], dueDate: finalDate)
                         }
                         .buttonStyle(.borderedProminent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 80)
                         .font(.title3)
                         .fontWeight(.semibold)
+                        .padding(.horizontal)
+                    }
+                } else if currentStep == .importantForSomeoneElse {
+                    // Is this important for someone else?
+                    VStack(spacing: 20) {
+                        Text("Is this important for someone else?")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                        
+                        // Show task description
+                        if !taskDescription.isEmpty {
+                            Text("\"\(taskDescription)\"")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .italic()
+                                .padding()
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                        
+                        Text("💡 Tip: Challenge the person - is it really important versus their other priorities?")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding()
+                        
+                        VStack(spacing: 16) {
+                            Button("Yes") {
+                                importantForSomeoneElse = true
+                                // Create task with #challenge tag in Bin / Challenge quadrant
+                                createTask(quadrant: .bin, tags: ["#challenge"])
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 80)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            
+                            Button("No") {
+                                importantForSomeoneElse = false
+                                currentStep = .reallyNeedsToBeDone
+                            }
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 80)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        }
                         .padding(.horizontal)
                     }
                 } else if currentStep == .reallyNeedsToBeDone {
@@ -605,10 +674,15 @@ struct TaskCreationView: View {
     private func handleNotUrgentResponse() {
         if isImportant == true {
             // Important Yes, Urgent No → Schedule
-            currentStep = .needsDate
+            // If date was already detected, skip the date question
+            if detectedDateFromDescription != nil {
+                createTask(quadrant: .schedule, tags: [], dueDate: detectedDateFromDescription)
+            } else {
+                currentStep = .needsDate
+            }
         } else {
-            // Important No, Urgent No
-            currentStep = .reallyNeedsToBeDone
+            // Important No, Urgent No → Ask if important for someone else
+            currentStep = .importantForSomeoneElse
         }
     }
     
@@ -643,11 +717,9 @@ struct TaskCreationView: View {
             }
         }.filter { !$0.isEmpty }
         
-        // Build notes with tags included
-        var notes = ""
-        if !formattedTags.isEmpty {
-            notes = formattedTags.joined(separator: " ")
-        }
+        // Don't put tags in notes here - normalization in addTask will handle that
+        // This ensures tags are properly formatted and deduplicated
+        let notes = "" // User notes are empty for question-based creation
         
         print("🏷️ Creating task with tags: \(formattedTags)")
         
@@ -701,44 +773,84 @@ struct TaskCreationView: View {
             return calendar.date(byAdding: .day, value: 1, to: now).map { calendar.startOfDay(for: $0) }
         }
         
-        // Check for day names (Monday, Tuesday, etc.)
+        // Check for day names (Monday, Tuesday, etc.) - find next occurrence
         let weekdayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
-        if let dayName = weekdayNames.first(where: { lowercaseText.contains($0) }),
-           let targetWeekday = weekdayNames.firstIndex(of: dayName) {
-            let currentWeekday = calendar.component(.weekday, from: now) - 1
-            var daysToAdd = targetWeekday - currentWeekday
-            if daysToAdd <= 0 {
-                daysToAdd += 7
+        for dayName in weekdayNames {
+            if lowercaseText.contains(dayName) {
+                if let targetWeekday = weekdayNames.firstIndex(of: dayName) {
+                    let currentWeekday = calendar.component(.weekday, from: now) - 1
+                    var daysToAdd = targetWeekday - currentWeekday
+                    // If the day is today or in the past, get next week's occurrence
+                    if daysToAdd <= 0 {
+                        daysToAdd += 7
+                    }
+                    if let nextDate = calendar.date(byAdding: .day, value: daysToAdd, to: now) {
+                        return calendar.startOfDay(for: nextDate)
+                    }
+                }
+                break // Only process first matching day name
             }
-            return calendar.date(byAdding: .day, value: daysToAdd, to: now).map { calendar.startOfDay(for: $0) }
         }
         
-        // Check for date patterns (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY)
-        let datePattern = #"(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})"#
-        if let regex = try? NSRegularExpression(pattern: datePattern, options: .caseInsensitive) {
-            let range = NSRange(lowercaseText.startIndex..., in: lowercaseText)
-            if let match = regex.firstMatch(in: lowercaseText, options: [], range: range),
-               match.numberOfRanges >= 4 {
-                let dayRange = Range(match.range(at: 1), in: lowercaseText)!
-                let monthRange = Range(match.range(at: 2), in: lowercaseText)!
-                let yearRange = Range(match.range(at: 3), in: lowercaseText)!
-                
-                let day = Int(lowercaseText[dayRange]) ?? 0
-                let month = Int(lowercaseText[monthRange]) ?? 0
-                var year = Int(lowercaseText[yearRange]) ?? calendar.component(.year, from: now)
-                
-                // Handle 2-digit years
-                if year < 100 {
-                    year += 2000
-                }
-                
-                if day > 0 && month > 0 && month <= 12 {
-                    var components = DateComponents()
-                    components.day = day
-                    components.month = month
-                    components.year = year
-                    if let date = calendar.date(from: components) {
-                        return calendar.startOfDay(for: date)
+        // Check for date patterns (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, MM/DD/YYYY, etc.)
+        // Try both DD/MM/YYYY and MM/DD/YYYY formats
+        let datePatterns = [
+            #"(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})"#,  // DD/MM/YYYY or MM/DD/YYYY
+            #"(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})"#  // DD MM YYYY
+        ]
+        
+        for datePattern in datePatterns {
+            if let regex = try? NSRegularExpression(pattern: datePattern, options: .caseInsensitive) {
+                let range = NSRange(lowercaseText.startIndex..., in: lowercaseText)
+                if let match = regex.firstMatch(in: lowercaseText, options: [], range: range),
+                   match.numberOfRanges >= 4 {
+                    let firstRange = Range(match.range(at: 1), in: lowercaseText)!
+                    let secondRange = Range(match.range(at: 2), in: lowercaseText)!
+                    let yearRange = Range(match.range(at: 3), in: lowercaseText)!
+                    
+                    let first = Int(lowercaseText[firstRange]) ?? 0
+                    let second = Int(lowercaseText[secondRange]) ?? 0
+                    var year = Int(lowercaseText[yearRange]) ?? calendar.component(.year, from: now)
+                    
+                    // Handle 2-digit years
+                    if year < 100 {
+                        year += 2000
+                    }
+                    
+                    // Try DD/MM/YYYY format first
+                    if first > 0 && first <= 31 && second > 0 && second <= 12 {
+                        var components = DateComponents()
+                        components.day = first
+                        components.month = second
+                        components.year = year
+                        if let date = calendar.date(from: components) {
+                            // If date is in the past, use next year
+                            if date < now {
+                                components.year = year + 1
+                                if let nextYearDate = calendar.date(from: components) {
+                                    return calendar.startOfDay(for: nextYearDate)
+                                }
+                            }
+                            return calendar.startOfDay(for: date)
+                        }
+                    }
+                    
+                    // Try MM/DD/YYYY format if DD/MM didn't work
+                    if second > 0 && second <= 31 && first > 0 && first <= 12 {
+                        var components = DateComponents()
+                        components.day = second
+                        components.month = first
+                        components.year = year
+                        if let date = calendar.date(from: components) {
+                            // If date is in the past, use next year
+                            if date < now {
+                                components.year = year + 1
+                                if let nextYearDate = calendar.date(from: components) {
+                                    return calendar.startOfDay(for: nextYearDate)
+                                }
+                            }
+                            return calendar.startOfDay(for: date)
+                        }
                     }
                 }
             }
@@ -792,6 +904,13 @@ struct TaskCreationView: View {
         return nil
     }
     
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
     private func reset() {
         currentStep = .enterTask
         taskDescription = ""
@@ -805,6 +924,8 @@ struct TaskCreationView: View {
         taskDate = nil
         timePeriod = nil
         reallyNeedsToBeDone = nil
+        importantForSomeoneElse = nil
+        detectedDateFromDescription = nil
         errorMessage = nil
         isCreatingTask = false
     }

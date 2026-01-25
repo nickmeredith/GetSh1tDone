@@ -5,7 +5,7 @@ enum Quadrant: String, CaseIterable, Identifiable {
     case doNow = "Do Now"
     case delegate = "Delegate"
     case schedule = "Schedule"
-    case bin = "Bin"
+    case bin = "Bin / Challenge"
     
     var id: String { rawValue }
     
