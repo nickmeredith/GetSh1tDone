@@ -19,11 +19,24 @@
 		75B449C1E4FA /* CoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* CoachView.swift */; };
 		AE8DBB489392 /* TaskChallengeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AF144261B /* TaskChallengeView.swift */; };
 		B1B96B9F332D /* PrioritiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD899DA81549 /* PrioritiesView.swift */; };
+		M1B0010000001 /* GetSh1tDoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E497FBF55B68 /* GetSh1tDoneApp.swift */; };
+		M1B0010000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A944E9BDA6D7 /* ContentView.swift */; };
+		M1B0010000003 /* RemindersManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F76AC6A41EB /* RemindersManager.swift */; };
+		M1B0010000004 /* Delegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60EA457D2F26C6810028AAB0 /* Delegate.swift */; };
+		M1B0010000005 /* EisenhowerMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A134FA4261 /* EisenhowerMatrixView.swift */; };
+		M1B0010000006 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DE69A72F1C3E2100055268 /* SettingsView.swift */; };
+		M1B0010000007 /* TaskQuadrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7984FFD71742 /* TaskQuadrant.swift */; };
+		M1B0010000008 /* CoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* CoachView.swift */; };
+		M1B0010000009 /* TaskChallengeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AF144261B /* TaskChallengeView.swift */; };
+		M1B0010000010 /* PrioritiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD899DA81549 /* PrioritiesView.swift */; };
+		M1B0010000011 /* TaskCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */; };
+		M1B0010000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4735879CE44 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0F76AC6A41EB /* RemindersManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersManager.swift; sourceTree = "<group>"; };
 		113ED6A8417E /* GetSh1tDone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GetSh1tDone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		M1A2B3C4D5E6F /* GetSh1tDone macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GetSh1tDone macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		11A134FA4261 /* EisenhowerMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EisenhowerMatrixView.swift; sourceTree = "<group>"; };
 		4AEB726BF86C /* GetSh1tDone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GetSh1tDone.entitlements; sourceTree = "<group>"; };
 		60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCreationView.swift; sourceTree = "<group>"; };
@@ -47,6 +60,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		M1F2R3A4M5E6W7O8R /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -62,6 +82,7 @@
 			isa = PBXGroup;
 			children = (
 				113ED6A8417E /* GetSh1tDone.app */,
+				M1A2B3C4D5E6F /* GetSh1tDone macOS.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,6 +128,23 @@
 			productReference = 113ED6A8417E /* GetSh1tDone.app */;
 			productType = "com.apple.product-type.application";
 		};
+		M1T2A3R4G5E6T /* GetSh1tDone macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = M1C5O6N7F8I9G0 /* Build configuration list for PBXNativeTarget "GetSh1tDone macOS" */;
+			buildPhases = (
+				M1S2O3U4R5C6E7S /* Sources */,
+				M1F2R3A4M5E6W7O8R /* Frameworks */,
+				M1R2E3S4O5U6R7C8E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "GetSh1tDone macOS";
+			productName = "GetSh1tDone macOS";
+			productReference = M1A2B3C4D5E6F /* GetSh1tDone macOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -131,6 +169,7 @@
 			projectRoot = "";
 			targets = (
 				383A01C601D5 /* GetSh1tDone */,
+				M1T2A3R4G5E6T /* GetSh1tDone macOS */,
 			);
 		};
 /* End PBXProject section */
@@ -141,6 +180,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				46998B88C258 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		M1R2E3S4O5U6R7C8E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M1B0010000012 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -162,6 +209,24 @@
 				60EA457E2F26C6810028AAB0 /* Delegate.swift in Sources */,
 				AE8DBB489392 /* TaskChallengeView.swift in Sources */,
 				B1B96B9F332D /* PrioritiesView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		M1S2O3U4R5C6E7S /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M1B0010000001 /* GetSh1tDoneApp.swift in Sources */,
+				M1B0010000002 /* ContentView.swift in Sources */,
+				M1B0010000003 /* RemindersManager.swift in Sources */,
+				M1B0010000004 /* Delegate.swift in Sources */,
+				M1B0010000005 /* EisenhowerMatrixView.swift in Sources */,
+				M1B0010000006 /* SettingsView.swift in Sources */,
+				M1B0010000007 /* TaskQuadrant.swift in Sources */,
+				M1B0010000008 /* CoachView.swift in Sources */,
+				M1B0010000009 /* TaskChallengeView.swift in Sources */,
+				M1B0010000010 /* PrioritiesView.swift in Sources */,
+				M1B0010000011 /* TaskCreationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,6 +423,64 @@
 			};
 			name = Debug;
 		};
+		M1D2E3B4U5G6M7A8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = GetSh1tDone/GetSh1tDone.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GetSh1tDone/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "GetSh1tDone needs access to your reminders to help you organize tasks in the Eisenhower matrix.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getsh1tdone.app.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		M1R2E3L4E5A6S7E8M /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = GetSh1tDone/GetSh1tDone.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GetSh1tDone/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "GetSh1tDone needs access to your reminders to help you organize tasks in the Eisenhower matrix.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getsh1tdone.app.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -375,6 +498,15 @@
 			buildConfigurations = (
 				C87EC24EB77E /* Debug */,
 				736496B3FBEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		M1C5O6N7F8I9G0 /* Build configuration list for PBXNativeTarget "GetSh1tDone macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				M1D2E3B4U5G6M7A8C /* Debug */,
+				M1R2E3L4E5A6S7E8M /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

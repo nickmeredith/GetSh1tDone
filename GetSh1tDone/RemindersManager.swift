@@ -68,10 +68,14 @@ class RemindersManager: ObservableObject {
             isAuthorized = currentStatus == .authorized
         }
         
+        #if DEBUG
         print("🔐 Authorization status: \(currentStatus.rawValue), Authorized: \(isAuthorized)")
+        #endif
         
         guard isAuthorized else {
+            #if DEBUG
             print("❌ Not authorized to load reminders. Status: \(currentStatus.rawValue)")
+            #endif
             return
         }
         
@@ -80,9 +84,13 @@ class RemindersManager: ObservableObject {
         
         // Get all reminder calendars to ensure we're loading from all sources
         let calendars = eventStore.calendars(for: .reminder)
+        #if DEBUG
         print("📅 Found \(calendars.count) reminder calendars")
+        #endif
         for calendar in calendars {
+            #if DEBUG
             print("   - \(calendar.title) (Source: \(calendar.source.title))")
+            #endif
         }
         
         // Use nil to get reminders from all calendars
@@ -92,14 +100,18 @@ class RemindersManager: ObservableObject {
         let reminders = await withCheckedContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
                 let reminderList = reminders ?? []
+                #if DEBUG
                 print("📥 Fetched \(reminderList.count) reminders from EventKit")
+                #endif
                 continuation.resume(returning: reminderList)
             }
         }
         
         var loadedTasks: [TaskItem] = []
         
+        #if DEBUG
         print("📋 Loading \(reminders.count) reminders...")
+        #endif
         
         // Filter reminders: include incomplete ones and completed ones from today
         let calendar = Calendar.current
@@ -124,10 +136,18 @@ class RemindersManager: ObservableObject {
             ($0.completionDate.map { calendar.startOfDay(for: $0) >= today && calendar.startOfDay(for: $0) < tomorrow } ?? false)
         }.count
         
+        #if DEBUG
         print("📋 Found \(filteredReminders.count) reminders to load:")
+        #endif
+        #if DEBUG
         print("   - Incomplete: \(filteredReminders.filter { !$0.isCompleted }.count)")
+        #endif
+        #if DEBUG
         print("   - Completed today: \(completedTodayCount)")
+        #endif
+        #if DEBUG
         print("   - Filtered out: \(reminders.count - filteredReminders.count) (completed on other days)")
+        #endif
         
         var quadrantCounts: [Quadrant: Int] = [.doNow: 0, .delegate: 0, .schedule: 0, .bin: 0]
         var sampleReminders: [String] = []
@@ -169,7 +189,9 @@ class RemindersManager: ObservableObject {
                 if hasChallengeTag {
                     // Assign to Bin / Challenge quadrant for tasks with challenge tag
                     quadrant = .bin
+                    #if DEBUG
                     print("🎯 Task '\(reminder.title ?? "")' has #challenge tag - assigning to Bin / Challenge")
+                    #endif
                 } else {
                     // Check for time period tags with variations (similar to quadrant tag detection)
                     let timePeriodTagTexts = ["today", "thisweek", "thismonth", "thisquarter"]
@@ -199,7 +221,9 @@ class RemindersManager: ObservableObject {
                     if hasTimePeriodTag {
                         // Assign to Schedule as default quadrant for tasks with time period tags
                         quadrant = .schedule
+                        #if DEBUG
                         print("📅 Task '\(reminder.title ?? "")' has time period tag but no quadrant tag - assigning to Schedule")
+                        #endif
                     }
                 }
             }
@@ -221,9 +245,13 @@ class RemindersManager: ObservableObject {
                     reminder.notes = task.notes
                     do {
                         try eventStore.save(reminder, commit: false)
+                        #if DEBUG
                         print("🔄 Updated reminder notes for '\(task.title)' to sync tags")
+                        #endif
                     } catch {
+                        #if DEBUG
                         print("⚠️ Failed to update reminder notes: \(error.localizedDescription)")
+                        #endif
                     }
                 }
             }
@@ -239,29 +267,51 @@ class RemindersManager: ObservableObject {
             
             // Debug: Show tags found (tags are now extracted in TaskItem.init)
             if !task.tags.isEmpty {
+                #if DEBUG
                 print("   📌 Other tags found for '\(reminder.title ?? "")': \(task.tags.joined(separator: ", "))")
+                #endif
             }
             
             loadedTasks.append(task)
         }
         
+        #if DEBUG
         print("\n📊 SUMMARY:")
+        #endif
+        #if DEBUG
         print("✅ Loaded \(loadedTasks.count) tasks")
+        #endif
+        #if DEBUG
         print("   - Do Now: \(quadrantCounts[.doNow] ?? 0)")
+        #endif
+        #if DEBUG
         print("   - Delegate: \(quadrantCounts[.delegate] ?? 0)")
+        #endif
+        #if DEBUG
         print("   - Schedule: \(quadrantCounts[.schedule] ?? 0)")
+        #endif
+        #if DEBUG
         print("   - Bin: \(quadrantCounts[.bin] ?? 0)")
+        #endif
+        #if DEBUG
         print("\n📝 Sample reminders (first 10):")
+        #endif
         for sample in sampleReminders {
+            #if DEBUG
             print("   \(sample)")
+            #endif
         }
         
         // Commit all reminder updates at once
         do {
             try eventStore.commit()
+            #if DEBUG
             print("✅ Committed all reminder updates")
+            #endif
         } catch {
+            #if DEBUG
             print("⚠️ Failed to commit reminder updates: \(error.localizedDescription)")
+            #endif
         }
         
         tasks = loadedTasks
@@ -361,13 +411,27 @@ class RemindersManager: ObservableObject {
         }
         
         // Debug logging for normalization
+        #if DEBUG
         print("🔧 Normalization details:")
+        #endif
+        #if DEBUG
         print("   - Original notes: '\(task.notes)'")
+        #endif
+        #if DEBUG
         print("   - Original tags: \(task.tags)")
+        #endif
+        #if DEBUG
         print("   - Tags from notes: \(uniqueTagsFromNotes)")
+        #endif
+        #if DEBUG
         print("   - Final unique tags: \(finalUniqueTags)")
+        #endif
+        #if DEBUG
         print("   - User notes (after removing hashtags): '\(userNotes)'")
+        #endif
+        #if DEBUG
         print("   - Rebuilt notes: '\(rebuiltNotes)'")
+        #endif
         
         // Update the task with normalized data
         normalizedTask.notes = rebuiltNotes
@@ -424,11 +488,21 @@ class RemindersManager: ObservableObject {
             
             for pattern in searchPatterns {
                 if lowercased.contains(pattern.lowercased()) {
+                    #if DEBUG
                     print("✅ Found \(tagText) hashtag in reminder: '\(title)'")
+                    #endif
+                    #if DEBUG
                     print("   Matched: '\(pattern)'")
+                    #endif
+                    #if DEBUG
                     print("   Notes: '\(notes.prefix(100))'")
+                    #endif
+                    #if DEBUG
                     print("   Calendar: '\(calendarName)'")
+                    #endif
+                    #if DEBUG
                     print("   → Assigned to quadrant: \(quadrant.rawValue)")
+                    #endif
                     return quadrant
                 }
             }
@@ -439,10 +513,18 @@ class RemindersManager: ObservableObject {
             if let regex = try? NSRegularExpression(pattern: regexPattern, options: .caseInsensitive) {
                 let range = NSRange(lowercased.startIndex..., in: lowercased)
                 if regex.firstMatch(in: lowercased, options: [], range: range) != nil {
+                    #if DEBUG
                     print("✅ Found \(tagText) hashtag (regex) in reminder: '\(title)'")
+                    #endif
+                    #if DEBUG
                     print("   Notes: '\(notes.prefix(100))'")
+                    #endif
+                    #if DEBUG
                     print("   Calendar: '\(calendarName)'")
+                    #endif
+                    #if DEBUG
                     print("   → Assigned to quadrant: \(quadrant.rawValue)")
+                    #endif
                     return quadrant
                 }
             }
@@ -453,16 +535,30 @@ class RemindersManager: ObservableObject {
         if notes.isEmpty {
             // Only log occasionally for empty notes to avoid spam
             if tasks.count < 5 || tasks.count % 50 == 0 {
+                #if DEBUG
                 print("⚠️ No quadrant hashtag found in reminder: '\(title)' - skipping")
+                #endif
+                #if DEBUG
                 print("   Notes: (empty)")
+                #endif
+                #if DEBUG
                 print("   Calendar: '\(calendarName)'")
+                #endif
             }
         } else {
             // Always log if notes exist but no tag found - might indicate a parsing issue
+            #if DEBUG
             print("⚠️ No quadrant hashtag found in reminder: '\(title)' - skipping")
+            #endif
+            #if DEBUG
             print("   Notes: '\(notes.prefix(200))'")
+            #endif
+            #if DEBUG
             print("   Calendar: '\(calendarName)'")
+            #endif
+            #if DEBUG
             print("   Lowercased combined: '\(lowercased.prefix(300))'")
+            #endif
         }
         
         // Return nil if no hashtag found - task will be excluded
@@ -475,7 +571,9 @@ class RemindersManager: ObservableObject {
         // Ensure reminder is in iCloud calendar if possible
         if let iCloudCalendar = getiCloudRemindersCalendar(), reminder.calendar != iCloudCalendar {
             reminder.calendar = iCloudCalendar
+            #if DEBUG
             print("📅 Moving reminder to iCloud calendar: \(iCloudCalendar.title)")
+            #endif
         }
         
         // Preserve existing notes and tags, just update quadrant hashtag
@@ -525,12 +623,16 @@ class RemindersManager: ObservableObject {
         
         do {
             try eventStore.save(reminder, commit: true)
+            #if DEBUG
             print("✅ Moved task '\(task.title)' to \(quadrant.rawValue) in calendar: \(reminder.calendar.title)")
+            #endif
             // Reload to ensure sync
             await loadReminders()
         } catch {
             let errorMsg = "Error moving reminder: \(error.localizedDescription)"
+            #if DEBUG
             print(errorMsg)
+            #endif
             lastError = errorMsg
         }
     }
@@ -542,12 +644,16 @@ class RemindersManager: ObservableObject {
             
             do {
                 try eventStore.save(reminder, commit: true)
+                #if DEBUG
                 print("✅ Marked task '\(task.title)' as \(reminder.isCompleted ? "completed" : "incomplete")")
+                #endif
                 // Reload to ensure sync
                 await loadReminders()
             } catch {
                 let errorMsg = "Error marking reminder as completed: \(error.localizedDescription)"
+                #if DEBUG
                 print(errorMsg)
+                #endif
                 lastError = errorMsg
             }
         } else {
@@ -563,7 +669,9 @@ class RemindersManager: ObservableObject {
             // Ensure reminder is in iCloud calendar if possible
             if let iCloudCalendar = getiCloudRemindersCalendar(), reminder.calendar != iCloudCalendar {
                 reminder.calendar = iCloudCalendar
+                #if DEBUG
                 print("📅 Moving reminder to iCloud calendar: \(iCloudCalendar.title)")
+                #endif
             }
             
             // Update title if provided
@@ -579,18 +687,24 @@ class RemindersManager: ObservableObject {
                     let calendar = Calendar.current
                     let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
                     reminder.dueDateComponents = components
+                    #if DEBUG
                     print("📅 Updated due date: \(dueDate)")
+                    #endif
                 } else {
                     // Clear the due date
                     reminder.dueDateComponents = nil
+                    #if DEBUG
                     print("📅 Cleared due date")
+                    #endif
                 }
             } else if let dueDate = dueDate {
                 // This is from another view - only set if provided
                 let calendar = Calendar.current
                 let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
                 reminder.dueDateComponents = components
+                #if DEBUG
                 print("📅 Updated due date: \(dueDate)")
+                #endif
             }
             
             // Update notes, preserving quadrant hashtag and tags
@@ -682,12 +796,16 @@ class RemindersManager: ObservableObject {
             
             do {
                 try eventStore.save(reminder, commit: true)
+                #if DEBUG
                 print("✅ Updated task '\(title ?? task.title)' in calendar: \(reminder.calendar.title)")
+                #endif
                 // Reload to ensure sync
                 await loadReminders()
             } catch {
                 let errorMsg = "Error updating reminder: \(error.localizedDescription)"
+                #if DEBUG
                 print(errorMsg)
+                #endif
                 lastError = errorMsg
             }
         } else {
@@ -834,11 +952,15 @@ class RemindersManager: ObservableObject {
             
             do {
                 try eventStore.save(reminder, commit: true)
+                #if DEBUG
                 print("✅ Removed time period tag '\(tag)' from task '\(task.title)'")
+                #endif
                 await loadReminders()
             } catch {
                 let errorMsg = "Error removing time period tag: \(error.localizedDescription)"
+                #if DEBUG
                 print(errorMsg)
+                #endif
                 lastError = errorMsg
             }
         }
@@ -900,11 +1022,15 @@ class RemindersManager: ObservableObject {
             
             do {
                 try eventStore.save(reminder, commit: true)
+                #if DEBUG
                 print("✅ Set time period tag '\(tag)' for task '\(task.title)'")
+                #endif
                 await loadReminders()
             } catch {
                 let errorMsg = "Error setting time period tag: \(error.localizedDescription)"
+                #if DEBUG
                 print(errorMsg)
+                #endif
                 lastError = errorMsg
             }
         }
@@ -921,15 +1047,21 @@ class RemindersManager: ObservableObject {
         let calendars = eventStore.calendars(for: .reminder)
         
         // Debug: Print all available calendars
+        #if DEBUG
         print("📋 Available Reminder Calendars:")
+        #endif
         for calendar in calendars {
+            #if DEBUG
             print("  - \(calendar.title) (Source: \(calendar.source.title), Type: \(calendar.source.sourceType.rawValue))")
+            #endif
         }
         
         // First, look specifically for "Backlog" list
         for calendar in calendars {
             if calendar.title.lowercased() == "backlog" {
+                #if DEBUG
                 print("✅ Found Backlog calendar: \(calendar.title) from source: \(calendar.source.title)")
+                #endif
                 return calendar
             }
         }
@@ -948,7 +1080,9 @@ class RemindersManager: ObservableObject {
                 let sourceTitle = calendar.source.title.lowercased()
                 // iCloud calendars can have various names like "iCloud", "iCloud Account", etc.
                 if sourceTitle.contains("icloud") {
+                    #if DEBUG
                     print("✅ Found iCloud calendar: \(calendar.title) from source: \(calendar.source.title)")
+                    #endif
                     return calendar
                 }
             }
@@ -959,14 +1093,20 @@ class RemindersManager: ObservableObject {
         if let defaultCalendar = eventStore.defaultCalendarForNewReminders() {
             let sourceTitle = defaultCalendar.source.title.lowercased()
             if sourceTitle.contains("icloud") || defaultCalendar.source.sourceType == .calDAV {
+                #if DEBUG
                 print("✅ Default calendar is iCloud: \(defaultCalendar.title)")
+                #endif
                 return defaultCalendar
             }
         }
         
+        #if DEBUG
         print("⚠️ No iCloud calendar found. Available calendars:")
+        #endif
         for calendar in calendars {
+            #if DEBUG
             print("  - \(calendar.title) (Source: \(calendar.source.title))")
+            #endif
         }
         return nil
     }
@@ -983,7 +1123,9 @@ class RemindersManager: ObservableObject {
         
         guard isAuthorized else {
             let errorMsg = "Not authorized to create reminders. Please grant access in Settings."
+            #if DEBUG
             print(errorMsg)
+            #endif
             lastError = errorMsg
             // Try requesting access again
             do {
@@ -1016,18 +1158,24 @@ class RemindersManager: ObservableObject {
         
         guard let calendar = calendar else {
             let errorMsg = "No calendar available. Please check your Reminders app settings and ensure iCloud is enabled."
+            #if DEBUG
             print(errorMsg)
+            #endif
             lastError = errorMsg
             return
         }
         
+        #if DEBUG
         print("📅 Using calendar: \(calendar.title) (Source: \(calendar.source.title))")
+        #endif
         
         // Validate task title is not empty
         let trimmedTitle = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
             let errorMsg = "Task title cannot be empty"
+            #if DEBUG
             print("❌ \(errorMsg)")
+            #endif
             lastError = errorMsg
             return
         }
@@ -1055,17 +1203,33 @@ class RemindersManager: ObservableObject {
         if #available(iOS 17.0, macOS 14.0, *) {
             // iOS 17+ might have tag support, but EventKit API doesn't expose it directly
             // Tags are stored in notes as hashtags which Apple Reminders can parse
+            #if DEBUG
             print("📱 iOS 17+ detected - tags stored in notes as hashtags")
+            #endif
         }
         
         // Debug: Print tag information
+        #if DEBUG
         print("🏷️ Original task:")
+        #endif
+        #if DEBUG
         print("   - Tags: \(task.tags)")
+        #endif
+        #if DEBUG
         print("   - Notes: \(task.notes)")
+        #endif
+        #if DEBUG
         print("🏷️ Normalized task:")
+        #endif
+        #if DEBUG
         print("   - Tags: \(normalizedTask.tags)")
+        #endif
+        #if DEBUG
         print("   - Notes: \(normalizedTask.notes)")
+        #endif
+        #if DEBUG
         print("🏷️ Reminder notes being saved: \(reminder.notes ?? "nil")")
+        #endif
         reminder.calendar = calendar
         
         // Set due date if provided
@@ -1073,33 +1237,57 @@ class RemindersManager: ObservableObject {
             let calendar = Calendar.current
             let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
             reminder.dueDateComponents = components
+            #if DEBUG
             print("📅 Set due date: \(dueDate)")
+            #endif
         }
         
         do {
             try eventStore.save(reminder, commit: true)
+            #if DEBUG
             print("✅ Successfully created reminder: \(task.title)")
+            #endif
+            #if DEBUG
             print("📝 Reminder ID: \(reminder.calendarItemIdentifier)")
+            #endif
+            #if DEBUG
             print("📅 Calendar: \(reminder.calendar?.title ?? "unknown")")
+            #endif
+            #if DEBUG
             print("🏷️ Notes saved to reminder: \(reminder.notes ?? "none")")
+            #endif
+            #if DEBUG
             print("🏷️ Tags in normalized task: \(normalizedTask.tags)")
+            #endif
             
             // Verify the reminder was saved correctly by reading it back
             if let savedReminder = eventStore.calendarItem(withIdentifier: reminder.calendarItemIdentifier) as? EKReminder {
+                #if DEBUG
                 print("🔍 Verification - Saved reminder notes: \(savedReminder.notes ?? "none")")
+                #endif
             }
             
             lastError = nil
             // Reload reminders to ensure sync
             await loadReminders()
+            #if DEBUG
             print("🔄 Reminders reloaded after task creation")
+            #endif
         } catch {
             let errorMsg = "Error creating reminder: \(error.localizedDescription)"
+            #if DEBUG
             print("❌ \(errorMsg)")
+            #endif
+            #if DEBUG
             print("Full error: \(error)")
+            #endif
             if let nsError = error as NSError? {
+                #if DEBUG
                 print("Error domain: \(nsError.domain), code: \(nsError.code)")
+                #endif
+                #if DEBUG
                 print("Error userInfo: \(nsError.userInfo)")
+                #endif
             }
             lastError = errorMsg
         }
@@ -1109,12 +1297,16 @@ class RemindersManager: ObservableObject {
         if let reminder = task.reminder {
             do {
                 try eventStore.remove(reminder, commit: true)
+                #if DEBUG
                 print("✅ Deleted task '\(task.title)'")
+                #endif
                 // Reload to ensure sync
                 await loadReminders()
             } catch {
                 let errorMsg = "Error deleting reminder: \(error.localizedDescription)"
+                #if DEBUG
                 print(errorMsg)
+                #endif
                 lastError = errorMsg
             }
         } else {
@@ -1135,14 +1327,18 @@ class RemindersManager: ObservableObject {
         }
         
         guard isAuthorized else {
+            #if DEBUG
             print("❌ Not authorized to load delegates")
+            #endif
             return
         }
         
         // Find the "Delegates" list
         let calendars = eventStore.calendars(for: .reminder)
         guard let delegatesCalendar = calendars.first(where: { $0.title.lowercased() == "delegates" }) else {
+            #if DEBUG
             print("⚠️ Delegates list not found")
+            #endif
             delegates = []
             return
         }
@@ -1167,9 +1363,13 @@ class RemindersManager: ObservableObject {
         
         // Sort by display name
         delegates = loadedDelegates.sorted { $0.displayName < $1.displayName }
+        #if DEBUG
         print("✅ Loaded \(delegates.count) delegates:")
+        #endif
         for delegate in delegates {
+            #if DEBUG
             print("   - \(delegate.displayName) (\(delegate.shortName))")
+            #endif
         }
     }
     
@@ -1208,10 +1408,14 @@ class RemindersManager: ObservableObject {
             
             do {
                 try eventStore.saveCalendar(delegatesCalendar!, commit: true)
+                #if DEBUG
                 print("✅ Created Delegates list")
+                #endif
             } catch {
                 lastError = "Failed to create Delegates list: \(error.localizedDescription)"
+                #if DEBUG
                 print("❌ \(lastError ?? "")")
+                #endif
                 return
             }
         }
@@ -1230,7 +1434,9 @@ class RemindersManager: ObservableObject {
         }
         
         if existingReminders.contains(where: { $0.title?.lowercased() == trimmedShortName.lowercased() }) {
+            #if DEBUG
             print("⚠️ Delegate with short name '\(trimmedShortName)' already exists")
+            #endif
             await loadDelegates()
             return
         }
@@ -1244,11 +1450,15 @@ class RemindersManager: ObservableObject {
         
         do {
             try eventStore.save(reminder, commit: true)
+            #if DEBUG
             print("✅ Added delegate: \(fullName.isEmpty ? trimmedShortName : fullName) (\(trimmedShortName))")
+            #endif
             await loadDelegates()
         } catch {
             lastError = "Failed to add delegate: \(error.localizedDescription)"
+            #if DEBUG
             print("❌ \(lastError ?? "")")
+            #endif
         }
     }
     
@@ -1288,11 +1498,15 @@ class RemindersManager: ObservableObject {
         
         do {
             try eventStore.remove(reminder, commit: true)
+            #if DEBUG
             print("✅ Removed delegate: \(delegate.displayName)")
+            #endif
             await loadDelegates()
         } catch {
             lastError = "Failed to remove delegate: \(error.localizedDescription)"
+            #if DEBUG
             print("❌ \(lastError ?? "")")
+            #endif
         }
     }
     
@@ -1337,7 +1551,9 @@ class RemindersManager: ObservableObject {
         if trimmedShortName.lowercased() != delegate.shortName.lowercased() {
             if reminders.contains(where: { $0.title?.lowercased() == trimmedShortName.lowercased() }) {
                 lastError = "A delegate with short name '\(trimmedShortName)' already exists"
+                #if DEBUG
                 print("❌ \(lastError ?? "")")
+                #endif
                 return
             }
         }
@@ -1347,11 +1563,15 @@ class RemindersManager: ObservableObject {
         
         do {
             try eventStore.save(reminder, commit: true)
+            #if DEBUG
             print("✅ Updated delegate: \(delegate.displayName) → \(newFullName.isEmpty ? trimmedShortName : newFullName) (\(trimmedShortName))")
+            #endif
             await loadDelegates()
         } catch {
             lastError = "Failed to update delegate: \(error.localizedDescription)"
+            #if DEBUG
             print("❌ \(lastError ?? "")")
+            #endif
         }
     }
 }

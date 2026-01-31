@@ -6,7 +6,7 @@ import AppKit
 #endif
 
 struct PrioritiesView: View {
-    @AppStorage("priorities") private var prioritiesData: Data = Data()
+    @AppStorage(AppConfigKeys.prioritiesList) private var prioritiesData: Data = Data()
     @EnvironmentObject var remindersManager: RemindersManager
     @State private var priorities: [Priority] = []
     @State private var showingAddPriority = false
@@ -198,7 +198,7 @@ struct PrioritiesView: View {
         }
         
         // Load last review date
-        if let reviewDate = UserDefaults.standard.object(forKey: "lastPriorityReview") as? Date {
+        if let reviewDate = UserDefaults.standard.object(forKey: AppConfigKeys.lastPriorityReview) as? Date {
             lastReviewDate = reviewDate
         }
     }
@@ -209,7 +209,7 @@ struct PrioritiesView: View {
         }
         
         if let reviewDate = lastReviewDate {
-            UserDefaults.standard.set(reviewDate, forKey: "lastPriorityReview")
+            UserDefaults.standard.set(reviewDate, forKey: AppConfigKeys.lastPriorityReview)
         }
     }
 }

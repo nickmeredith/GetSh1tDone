@@ -154,7 +154,9 @@ struct TaskCreationView: View {
                     Button("Continue") {
                         detectedDateFromDescription = detectDate(from: taskDescription)
                         if detectedDateFromDescription != nil {
+                            #if DEBUG
                             print("📅 Detected date from description: \(detectedDateFromDescription!)")
+                            #endif
                         }
                         currentStep = .canDelegate
                     }
@@ -820,7 +822,9 @@ struct TaskCreationView: View {
         // This ensures tags are properly formatted and deduplicated
         let notes = "" // User notes are empty for question-based creation
         
+        #if DEBUG
         print("🏷️ Creating task with tags: \(formattedTags)")
+        #endif
         
         let task = TaskItem(
             title: trimmedDescription,
@@ -845,10 +849,16 @@ struct TaskCreationView: View {
             if let error = remindersManager.lastError {
                 errorMessage = error
                 isCreatingTask = false
+                #if DEBUG
                 print("❌ Error creating task: \(error)")
+                #endif
             } else {
+                #if DEBUG
                 print("✅ Task created successfully: \(trimmedDescription)")
+                #endif
+                #if DEBUG
                 print("📋 Task details - Quadrant: \(quadrant.rawValue), Tags: \(tags), DueDate: \(detectedDate?.description ?? "none")")
+                #endif
                 // Small delay to show completion state
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 isCreatingTask = false
