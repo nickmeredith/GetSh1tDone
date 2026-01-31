@@ -705,7 +705,7 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true, showOnlyToday: Bool = false, showOnlyThisWeek: Bool = false, showOnlyDelegated: Bool = false) -> [TaskItem] {
+    func getTasksForQuadrant(_ quadrant: Quadrant, showCompleted: Bool = true, showOnlyToday: Bool = false, showOnlyThisWeek: Bool = false, showOnlyDelegated: Bool = false, filterByDelegate: Delegate? = nil, showUndelegatedOnly: Bool = false) -> [TaskItem] {
         var filteredTasks = tasks.filter { $0.quadrant == quadrant }
         
         // Filter by completion status
@@ -731,6 +731,15 @@ class RemindersManager: ObservableObject {
             }
         }
         
+        // Delegate quadrant: show undelegated only, or filter by selected delegate
+        if quadrant == .delegate {
+            if showUndelegatedOnly {
+                filteredTasks = filteredTasks.filter { !hasDelegateTag($0) }
+            } else if let delegate = filterByDelegate {
+                filteredTasks = filteredTasks.filter { hasDelegateTag($0, delegate: delegate) }
+            }
+        }
+        
         return filteredTasks
     }
     
@@ -740,31 +749,34 @@ class RemindersManager: ObservableObject {
         
         // If no delegates loaded, return false
         guard !delegates.isEmpty else {
-            print("⚠️ No delegates loaded for delegate tag check")
             return false
         }
         
         // Check if any tag matches any delegate's short name (case-insensitive)
-        // Tags are stored as #shortname format
         for tag in allTags {
             let lowerTag = tag.lowercased()
-            // Remove # from tag for comparison
             let tagWithoutHash = lowerTag.hasPrefix("#") ? String(lowerTag.dropFirst()) : lowerTag
             
-            // Check if this tag matches any delegate's short name
             for delegate in delegates {
                 let lowerShortName = delegate.shortName.lowercased()
-                // Match if tag (without #) equals delegate short name, or tag equals #shortname
                 if tagWithoutHash == lowerShortName || lowerTag == "#\(lowerShortName)" {
-                    print("✅ Found delegate tag '\(tag)' matching delegate '\(delegate.displayName)' (\(delegate.shortName)) in task '\(task.title)'")
                     return true
                 }
             }
         }
-        
-        let delegateNames = delegates.map { "\($0.displayName) (\($0.shortName))" }.joined(separator: ", ")
-        print("❌ No delegate tag found in task '\(task.title)'. Tags: \(allTags.joined(separator: ", ")), Delegates: \(delegateNames)")
         return false
+    }
+    
+    /// Returns true if the task has this specific delegate's hashtag.
+    func hasDelegateTag(_ task: TaskItem, delegate: Delegate) -> Bool {
+        let allTags = task.tags + TaskItem.extractTags(from: task.notes)
+        let lowerShortName = delegate.shortName.lowercased()
+        let hashtag = "#\(lowerShortName)"
+        return allTags.contains { tag in
+            let lowerTag = tag.lowercased()
+            let tagWithoutHash = lowerTag.hasPrefix("#") ? String(lowerTag.dropFirst()) : lowerTag
+            return tagWithoutHash == lowerShortName || lowerTag == hashtag
+        }
     }
     
     func hasTimePeriodTag(_ task: TaskItem, tag: String) -> Bool {

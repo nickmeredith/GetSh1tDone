@@ -15,6 +15,10 @@ struct EisenhowerMatrixView: View {
     @State private var showOnlyToday = false
     @State private var showOnlyThisWeek = false
     @State private var showOnlyDelegated = false
+    /// When Delegate quadrant is expanded: filter to this delegate's tasks (nil = all).
+    @State private var delegateFilterSelected: Delegate?
+    /// When Delegate quadrant is expanded: show only tasks with no delegate hashtag.
+    @State private var showUndelegatedInDelegate = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -196,11 +200,21 @@ struct EisenhowerMatrixView: View {
             if let expanded = expandedQuadrant {
                 FullScreenQuadrantView(
                     quadrant: expanded,
-                    tasks: remindersManager.getTasksForQuadrant(expanded, showCompleted: true, showOnlyToday: showOnlyToday, showOnlyThisWeek: showOnlyThisWeek, showOnlyDelegated: showOnlyDelegated),
+                    tasks: remindersManager.getTasksForQuadrant(
+                        expanded,
+                        showCompleted: true,
+                        showOnlyToday: showOnlyToday,
+                        showOnlyThisWeek: showOnlyThisWeek,
+                        showOnlyDelegated: showOnlyDelegated,
+                        filterByDelegate: expanded == .delegate ? delegateFilterSelected : nil,
+                        showUndelegatedOnly: expanded == .delegate ? showUndelegatedInDelegate : false
+                    ),
                     allTasks: remindersManager.tasks,
                     remindersManager: remindersManager,
                     showOnlyToday: showOnlyToday,
                     showOnlyThisWeek: showOnlyThisWeek,
+                    delegateFilter: expanded == .delegate ? $delegateFilterSelected : nil,
+                    showUndelegatedOnly: expanded == .delegate ? $showUndelegatedInDelegate : nil,
                     onClose: {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             expandedQuadrant = nil
@@ -339,7 +353,6 @@ struct QuadrantView: View {
                                 quadrantColor: quadrantColor,
                                 remindersManager: remindersManager,
                                 onTap: { onTaskTap(task) },
-                                onEdit: { showingEditTask = task },
                                 onDelete: {
                                     Task {
                                         await remindersManager.deleteTask(task)
@@ -367,7 +380,6 @@ struct QuadrantView: View {
                                     quadrantColor: quadrantColor,
                                     remindersManager: remindersManager,
                                     onTap: {},
-                                    onEdit: {},
                                     onDelete: {},
                                     onToggleComplete: {},
                                     onSetToday: nil,
@@ -462,7 +474,6 @@ struct TaskCard: View {
     let quadrantColor: Color
     let remindersManager: RemindersManager
     let onTap: () -> Void
-    let onEdit: () -> Void
     let onDelete: () -> Void
     let onToggleComplete: () -> Void
     let onSetToday: (() -> Void)?
@@ -508,22 +519,13 @@ struct TaskCard: View {
                 }
             }
             
-            // Action Buttons - smaller and more compact
-            HStack(spacing: 6) {
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .foregroundColor(.gray.opacity(0.6))
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: onToggleComplete) {
-                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-                        .foregroundColor(task.isCompleted ? .green : .gray.opacity(0.6))
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
+            // Complete button - tap task to edit
+            Button(action: onToggleComplete) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                    .foregroundColor(task.isCompleted ? .green : .gray.opacity(0.6))
+                    .font(.title2)
             }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -650,6 +652,10 @@ struct AddTaskView: View {
     @Environment(\.dismiss) var dismiss
     let quadrant: Quadrant
     @ObservedObject var remindersManager: RemindersManager
+    /// Optional pre-filled title (e.g. from Quick Add in Task tab).
+    var initialTitle: String = ""
+    /// Optional: called after task is saved (e.g. so Quick Add can close the sheet and return to Add new task screen).
+    var onSave: (() -> Void)? = nil
     
     @State private var title: String = ""
     @State private var notes: String = ""
@@ -805,9 +811,10 @@ struct AddTaskView: View {
                             tags: tagArray
                         )
                         
-                        Task {
+                        Task { @MainActor in
                             let taskDueDate = hasDueDate ? dueDate : nil
                             await remindersManager.addTask(task, dueDate: taskDueDate)
+                            onSave?()
                             dismiss()
                         }
                     }
@@ -817,6 +824,11 @@ struct AddTaskView: View {
             .task {
                 // Load delegates when view appears
                 await remindersManager.loadDelegates()
+            }
+            .onAppear {
+                if !initialTitle.isEmpty {
+                    title = initialTitle
+                }
             }
         }
         #if os(macOS)
@@ -1123,6 +1135,7 @@ struct TaskDetailView: View {
                     }) {
                         Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
                             .foregroundColor(task.isCompleted ? .green : .blue)
+                            .font(.title2)
                     }
                     
                     // Delete button
@@ -1195,6 +1208,10 @@ struct FullScreenQuadrantView: View {
     @ObservedObject var remindersManager: RemindersManager
     let showOnlyToday: Bool
     let showOnlyThisWeek: Bool
+    /// Only used when quadrant == .delegate: filter by this delegate.
+    var delegateFilter: Binding<Delegate?>?
+    /// Only used when quadrant == .delegate: show only tasks with no delegate tag.
+    var showUndelegatedOnly: Binding<Bool>?
     let onClose: () -> Void
     let onTaskTap: (TaskItem) -> Void
     
@@ -1202,7 +1219,7 @@ struct FullScreenQuadrantView: View {
     @State private var showingEditTask: TaskItem?
     @State private var showCompletedTasks = false
     
-    // Filter tasks based on showCompletedTasks toggle
+    // Filter tasks based on showCompletedTasks toggle (tasks are already filtered by delegate/undelegated when passed in)
     private var filteredTasks: [TaskItem] {
         if showCompletedTasks {
             return tasks
@@ -1256,21 +1273,69 @@ struct FullScreenQuadrantView: View {
                         .padding(.leading, 16)
                     }
                     
-                    // Show Completed toggle
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
-                                .font(.caption2)
-                                .foregroundColor(showCompletedTasks ? .blue : .secondary)
-                            Toggle("Show Completed", isOn: $showCompletedTasks)
+                    // Delegate quadrant: filter by delegate, then toggles on one line
+                    if quadrant == .delegate, let delegateFilter = delegateFilter, let showUndelegatedOnly = showUndelegatedOnly {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 12) {
+                                Text("Filter by delegate")
+                                    .font(.subheadline)
+                                    .foregroundColor(quadrantColor.opacity(0.9))
+                                Picker("Delegate", selection: delegateFilter) {
+                                    Text("All delegates").tag(nil as Delegate?)
+                                    ForEach(remindersManager.delegates) { delegate in
+                                        Text(delegate.displayName).tag(delegate as Delegate?)
+                                    }
+                                }
+                                .pickerStyle(.menu)
                                 .labelsHidden()
-                                .toggleStyle(.switch)
+                            }
+                            // Both toggles on the same line
+                            HStack(spacing: 16) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: showUndelegatedOnly.wrappedValue ? "person.slash.fill" : "person.slash")
+                                        .font(.caption2)
+                                        .foregroundColor(showUndelegatedOnly.wrappedValue ? .blue : .secondary)
+                                    Toggle("Show undelegated only", isOn: showUndelegatedOnly)
+                                        .labelsHidden()
+                                        .toggleStyle(.switch)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemBackground).opacity(0.8))
+                                .cornerRadius(6)
+                                HStack(spacing: 4) {
+                                    Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(showCompletedTasks ? .blue : .secondary)
+                                    Toggle("Show Completed", isOn: $showCompletedTasks)
+                                        .labelsHidden()
+                                        .toggleStyle(.switch)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemBackground).opacity(0.8))
+                                .cornerRadius(6)
+                                Spacer(minLength: 0)
+                            }
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(Color(.systemBackground).opacity(0.8))
-                        .cornerRadius(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        // Show Completed toggle (non-delegate quadrants)
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
+                                    .font(.caption2)
+                                    .foregroundColor(showCompletedTasks ? .blue : .secondary)
+                                Toggle("Show Completed", isOn: $showCompletedTasks)
+                                    .labelsHidden()
+                                    .toggleStyle(.switch)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemBackground).opacity(0.8))
+                            .cornerRadius(6)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1286,7 +1351,6 @@ struct FullScreenQuadrantView: View {
                                 quadrantColor: quadrantColor,
                                 remindersManager: remindersManager,
                                 onTap: { onTaskTap(task) },
-                                onEdit: { showingEditTask = task },
                                 onDelete: {
                                     Task {
                                         await remindersManager.deleteTask(task)
@@ -1314,7 +1378,6 @@ struct FullScreenQuadrantView: View {
                                     quadrantColor: quadrantColor,
                                     remindersManager: remindersManager,
                                     onTap: {},
-                                    onEdit: {},
                                     onDelete: {},
                                     onToggleComplete: {},
                                     onSetToday: nil,

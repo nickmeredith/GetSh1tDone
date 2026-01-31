@@ -96,14 +96,6 @@ struct PrioritiesView: View {
                                 onTap: {
                                     showingTaskDetail = task
                                 },
-                                onEdit: {
-                                    showingEditTask = task
-                                },
-                                onDelete: {
-                                    Task {
-                                        await remindersManager.deleteTask(task)
-                                    }
-                                },
                                 onToggleComplete: {
                                     Task {
                                         await remindersManager.markTaskCompleted(task)
@@ -198,8 +190,6 @@ struct TaskRowView: View {
     let task: TaskItem
     @ObservedObject var remindersManager: RemindersManager
     let onTap: () -> Void
-    let onEdit: () -> Void
-    let onDelete: () -> Void
     let onToggleComplete: () -> Void
     let onSetToday: (() -> Void)?
     let onSetThisWeek: (() -> Void)?
@@ -217,14 +207,6 @@ struct TaskRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Checkbox
-            Button(action: onToggleComplete) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(task.isCompleted ? .green : .gray)
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-            
             // Task content
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
@@ -256,22 +238,13 @@ struct TaskRowView: View {
             
             Spacer()
             
-            // Action buttons
-            HStack(spacing: 8) {
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .foregroundColor(.blue)
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .font(.system(size: 16))
-                }
-                .buttonStyle(.plain)
+            // Complete button on right - tap row to edit or delete from detail (consistent with quadrant tasks)
+            Button(action: onToggleComplete) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                    .foregroundColor(task.isCompleted ? .green : .gray)
+                    .font(.title2)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
         .offset(x: dragOffset)
