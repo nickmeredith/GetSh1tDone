@@ -16,7 +16,7 @@
 		60BE2D5F2F2582F00049ABBF /* TaskCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60BE2D5E2F2582F00049ABBF /* TaskCreationView.swift */; };
 		60DE69A82F1C3E2100055268 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DE69A72F1C3E2100055268 /* SettingsView.swift */; };
 		60EA457E2F26C6810028AAB0 /* Delegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60EA457D2F26C6810028AAB0 /* Delegate.swift */; };
-		75B449C1E4FA /* PlanningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* PlanningView.swift */; };
+		75B449C1E4FA /* CoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA638E163650 /* CoachView.swift */; };
 		AE8DBB489392 /* TaskChallengeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AF144261B /* TaskChallengeView.swift */; };
 		B1B96B9F332D /* PrioritiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD899DA81549 /* PrioritiesView.swift */; };
 /* End PBXBuildFile section */
@@ -36,7 +36,7 @@
 		CD899DA81549 /* PrioritiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiesView.swift; sourceTree = "<group>"; };
 		E4735879CE44 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E497FBF55B68 /* GetSh1tDoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetSh1tDoneApp.swift; sourceTree = "<group>"; };
-		EA638E163650 /* PlanningView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningView.swift; sourceTree = "<group>"; };
+		EA638E163650 /* CoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,7 +76,7 @@
 				11A134FA4261 /* EisenhowerMatrixView.swift */,
 				60DE69A72F1C3E2100055268 /* SettingsView.swift */,
 				7984FFD71742 /* TaskQuadrant.swift */,
-				EA638E163650 /* PlanningView.swift */,
+				EA638E163650 /* CoachView.swift */,
 				988AF144261B /* TaskChallengeView.swift */,
 				CD899DA81549 /* PrioritiesView.swift */,
 				E4735879CE44 /* Assets.xcassets */,
@@ -158,7 +158,7 @@
 				60DE69A82F1C3E2100055268 /* SettingsView.swift in Sources */,
 				3895B8FEB555 /* EisenhowerMatrixView.swift in Sources */,
 				1B173EE0794E /* TaskQuadrant.swift in Sources */,
-				75B449C1E4FA /* PlanningView.swift in Sources */,
+				75B449C1E4FA /* CoachView.swift in Sources */,
 				60EA457E2F26C6810028AAB0 /* Delegate.swift in Sources */,
 				AE8DBB489392 /* TaskChallengeView.swift in Sources */,
 				B1B96B9F332D /* PrioritiesView.swift in Sources */,

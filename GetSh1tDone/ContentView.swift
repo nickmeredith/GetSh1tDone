@@ -13,9 +13,9 @@ struct ContentView: View {
                 }
                 .tag(0)
             
-            PlanningView(remindersManager: remindersManager)
+            CoachView()
                 .tabItem {
-                    Label("Goals", systemImage: "target")
+                    Label("Coach", systemImage: "person.crop.circle.fill")
                 }
                 .tag(1)
             
