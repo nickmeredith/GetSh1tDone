@@ -16,6 +16,7 @@ struct PrioritiesView: View {
     @State private var showingEditTask: TaskItem?
     @State private var showingTaskDetail: TaskItem?
     @State private var showCompletedTasks = false
+    @State private var planDelegateFilter: Delegate?
     
     enum TimePeriod: String, CaseIterable {
         case today = "Today"
@@ -52,23 +53,44 @@ struct PrioritiesView: View {
                 .pickerStyle(.segmented)
                 .padding()
                 
-                // Show Completed toggle
-                HStack {
-                    Spacer()
+                // Delegate filter and Show Completed on one line
+                HStack(spacing: 12) {
+                    // Delegate filter (wider, same as expanded Delegate quadrant)
+                    HStack(spacing: 8) {
+                        Text("Delegate")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Picker("Delegate", selection: $planDelegateFilter) {
+                            Text("All").tag(nil as Delegate?)
+                            ForEach(remindersManager.delegates) { delegate in
+                                Text(delegate.displayName).tag(delegate as Delegate?)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color(.systemBackground).opacity(0.8))
+                    .cornerRadius(8)
+                    Spacer(minLength: 0)
+                    // Show Completed
                     HStack(spacing: 4) {
                         Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
                             .font(.caption2)
                             .foregroundColor(showCompletedTasks ? .blue : .secondary)
-                        Toggle("Show Completed", isOn: $showCompletedTasks)
+                        Toggle("Completed", isOn: $showCompletedTasks)
                             .labelsHidden()
                             .toggleStyle(.switch)
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                     .background(Color(.systemBackground).opacity(0.8))
-                    .cornerRadius(6)
-                    .padding(.horizontal)
+                    .cornerRadius(8)
                 }
+                .padding(.horizontal)
                 .padding(.bottom, 8)
                 
                 // Tasks List for selected time period
@@ -128,15 +150,21 @@ struct PrioritiesView: View {
     
     private func getTasksForTimePeriod(_ period: TimePeriod, showCompleted: Bool = false) -> [TaskItem] {
         // Filter by completion status first
-        let allTasks = showCompleted ? remindersManager.tasks : remindersManager.tasks.filter { !$0.isCompleted }
+        var filtered = showCompleted ? remindersManager.tasks : remindersManager.tasks.filter { !$0.isCompleted }
         
-        return allTasks.filter { task in
+        // Filter by time period tag (Today, This Week, This Month, This Quarter)
+        filtered = filtered.filter { task in
             let allTags = task.tags + TaskItem.extractTags(from: task.notes)
             let lowerTag = period.tag.lowercased()
-            
-            // Only show tasks that have the exact time period tag for this period
             return allTags.contains { $0.lowercased() == lowerTag }
         }
+        
+        // Delegate filter: filter by selected delegate (if any)
+        if let delegate = planDelegateFilter {
+            filtered = filtered.filter { remindersManager.hasDelegateTag($0, delegate: delegate) }
+        }
+        
+        return filtered
     }
     
     private func addPriority() {
