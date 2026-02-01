@@ -1380,7 +1380,8 @@ class RemindersManager: ObservableObject {
     /// - Parameters:
     ///   - incompleteOnly: if true, only return reminders that are not completed.
     ///   - todayOnly: if true, only return reminders whose title ends with today's date (d MMM yy).
-    func fetchPrepareReminders(listName: String, incompleteOnly: Bool = false, todayOnly: Bool = false) async -> [(question: String, answer: String)] {
+    ///   - weekStart: if set, only return reminders with creationDate >= weekStart and creationDate < weekStart + 7 days (for "this week" quick view).
+    func fetchPrepareReminders(listName: String, incompleteOnly: Bool = false, todayOnly: Bool = false, weekStart: Date? = nil) async -> [(question: String, answer: String)] {
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
         if #available(iOS 17.0, macOS 14.0, *) {
@@ -1400,16 +1401,35 @@ class RemindersManager: ObservableObject {
         dateFormatter.dateFormat = "d MMM yy"
         let todayString = dateFormatter.string(from: Date())
         let prefix = "Prepare-"
+        let cal = Calendar.current
+        let endOfWeek: Date? = weekStart.map { cal.date(byAdding: .day, value: 7, to: $0) ?? $0 }
         var result: [(question: String, answer: String)] = []
         for r in reminders {
             guard let title = r.title, title.hasPrefix(prefix) else { continue }
             if incompleteOnly, r.isCompleted { continue }
             if todayOnly, !title.hasSuffix("-" + todayString) { continue }
+            if let start = weekStart, let end = endOfWeek {
+                let created = r.creationDate ?? .distantPast
+                if created < start || created >= end { continue }
+            }
             let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
             let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             result.append((question: question, answer: answer))
         }
         return result
+    }
+
+    /// Start of the current "prep week" (most recent occurrence of the given weekday at 00:00). dayOfWeek: 1 = Sunday … 7 = Saturday (Calendar.weekday). Returns nil if dayOfWeek is 0.
+    static func startOfCurrentWeek(dayOfWeek: Int) -> Date? {
+        guard dayOfWeek >= 1, dayOfWeek <= 7 else { return nil }
+        let cal = Calendar.current
+        let now = Date()
+        let todayWeekday = cal.component(.weekday, from: now)
+        let startOfToday = cal.startOfDay(for: now)
+        var daysBack = todayWeekday - dayOfWeek
+        if daysBack < 0 { daysBack += 7 }
+        guard let start = cal.date(byAdding: .day, value: -daysBack, to: startOfToday) else { return nil }
+        return start
     }
 
     /// Extracts question from reminder title "Prepare-Question-Date" by stripping prefix and trailing "-d MMM yy".
@@ -1459,7 +1479,48 @@ class RemindersManager: ObservableObject {
         fromToday.sort { $0.created < $1.created }
         return fromToday.map { ($0.question, $0.answer) }
     }
-    
+
+    /// Call when starting a Prepare session for This Week: completes any Prepare reminders from before this week (based on weekPrepDayOfWeek), returns this week's for prefilling. weekPrepDayOfWeek: 1 = Sunday … 7 = Saturday (from Prepare config).
+    func prepareSessionForWeek(listName: String, weekPrepDayOfWeek: Int) async -> [(question: String, answer: String)] {
+        guard let startOfThisWeek = Self.startOfCurrentWeek(dayOfWeek: weekPrepDayOfWeek) else { return [] }
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else { return [] }
+        let calendars = eventStore.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else { return [] }
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let reminders = await withCheckedContinuation { (continuation: CheckedContinuation<[EKReminder], Never>) in
+            eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0 ?? []) }
+        }
+        let prefix = "Prepare-"
+        let cal = Calendar.current
+        let endOfThisWeek = cal.date(byAdding: .day, value: 7, to: startOfThisWeek) ?? startOfThisWeek
+        var fromThisWeek: [(created: Date, question: String, answer: String)] = []
+        for r in reminders {
+            guard let title = r.title, title.hasPrefix(prefix) else { continue }
+            let created = r.creationDate ?? .distantPast
+            if created < startOfThisWeek {
+                if !r.isCompleted {
+                    r.isCompleted = true
+                    try? eventStore.save(r, commit: true)
+                }
+                continue
+            }
+            if created >= endOfThisWeek { continue }
+            let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
+            let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            fromThisWeek.append((created: created, question: question, answer: answer))
+        }
+        fromThisWeek.sort { $0.created < $1.created }
+        return fromThisWeek.map { ($0.question, $0.answer) }
+    }
+
     // MARK: - Delegate Management
     
     func loadDelegates() async {

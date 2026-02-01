@@ -204,6 +204,22 @@ struct PrepareQuestionsView: View {
                     }
                 }
             }
+            if period == .week {
+                let config = CoachConfigStorage.loadPrepare()
+                let todayWeekday = Calendar.current.component(.weekday, from: Date())
+                if config.week.dayOfWeek == todayWeekday {
+                    Task { @MainActor in
+                        let prefill = await remindersManager.prepareSessionForWeek(listName: period.reminderListName, weekPrepDayOfWeek: config.week.dayOfWeek)
+                        if !prefill.isEmpty {
+                            var newAnswers = Array(repeating: "", count: period.questions.count)
+                            for (i, pair) in prefill.enumerated() where i < newAnswers.count {
+                                newAnswers[i] = pair.answer
+                            }
+                            answers = newAnswers
+                        }
+                    }
+                }
+            }
         }
     }
 

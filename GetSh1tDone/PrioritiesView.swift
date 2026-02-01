@@ -18,7 +18,8 @@ struct PrioritiesView: View {
     @State private var showCompletedTasks = false
     @State private var planDelegateFilter: Delegate?
     @State private var showingTodayPrepQuickView = false
-    
+    @State private var showingThisWeekPrepQuickView = false
+
     enum TimePeriod: String, CaseIterable {
         case today = "Today"
         case thisWeek = "This Week"
@@ -83,6 +84,19 @@ struct PrioritiesView: View {
                     if selectedTimePeriod == .today {
                         Button {
                             showingTodayPrepQuickView = true
+                        } label: {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemBackground).opacity(0.8))
+                        .cornerRadius(8)
+                    }
+                    // This week's prep quick view (same row, only when This Week selected)
+                    if selectedTimePeriod == .thisWeek {
+                        Button {
+                            showingThisWeekPrepQuickView = true
                         } label: {
                             Image(systemName: "doc.text.magnifyingglass")
                                 .font(.subheadline)
@@ -164,6 +178,11 @@ struct PrioritiesView: View {
             .sheet(isPresented: $showingTodayPrepQuickView) {
                 TodayPrepQuickView(remindersManager: remindersManager) {
                     showingTodayPrepQuickView = false
+                }
+            }
+            .sheet(isPresented: $showingThisWeekPrepQuickView) {
+                ThisWeekPrepQuickView(remindersManager: remindersManager) {
+                    showingThisWeekPrepQuickView = false
                 }
             }
         }
@@ -298,6 +317,78 @@ struct TodayPrepQuickView: View {
             .onAppear {
                 Task {
                     prepItems = await remindersManager.fetchPrepareReminders(listName: "today", incompleteOnly: true, todayOnly: true)
+                    isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Quick view this week's prep (read-only, incomplete only, this week by Prepare config)
+struct ThisWeekPrepQuickView: View {
+    @ObservedObject var remindersManager: RemindersManager
+    var onDismiss: () -> Void
+    @State private var prepItems: [(question: String, answer: String)] = []
+    @State private var isLoading = true
+
+    private let questionLength = 60
+    private let answerLength = 80
+
+    private func short(_ s: String, maxLen: Int) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count <= maxLen { return t }
+        return String(t.prefix(maxLen)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    var body: some View {
+        NavigationView {
+            Group {
+                if isLoading {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if prepItems.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 44))
+                            .foregroundColor(.secondary)
+                        Text("No this week's prep yet")
+                            .font(.headline)
+                        Text("Add prep from Coach → Prepare → This Week")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(Array(prepItems.enumerated()), id: \.offset) { _, item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(short(item.question, maxLen: questionLength))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(short(item.answer, maxLen: answerLength))
+                                    .font(.body)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("This week's prep")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                }
+            }
+            .onAppear {
+                Task {
+                    let config = CoachConfigStorage.loadPrepare()
+                    let weekStart = RemindersManager.startOfCurrentWeek(dayOfWeek: config.week.dayOfWeek)
+                    prepItems = await remindersManager.fetchPrepareReminders(listName: "this week", incompleteOnly: true, weekStart: weekStart)
                     isLoading = false
                 }
             }
