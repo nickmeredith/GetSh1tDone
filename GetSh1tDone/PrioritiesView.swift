@@ -19,6 +19,8 @@ struct PrioritiesView: View {
     @State private var planDelegateFilter: Delegate?
     @State private var showingTodayPrepQuickView = false
     @State private var showingThisWeekPrepQuickView = false
+    @State private var showingThisMonthPrepQuickView = false
+    @State private var showingThisQuarterPrepQuickView = false
 
     enum TimePeriod: String, CaseIterable {
         case today = "Today"
@@ -106,6 +108,32 @@ struct PrioritiesView: View {
                         .background(Color(.systemBackground).opacity(0.8))
                         .cornerRadius(8)
                     }
+                    // This month's prep quick view (same row, only when This Month selected)
+                    if selectedTimePeriod == .thisMonth {
+                        Button {
+                            showingThisMonthPrepQuickView = true
+                        } label: {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemBackground).opacity(0.8))
+                        .cornerRadius(8)
+                    }
+                    // This quarter's prep quick view (same row, only when This Quarter selected)
+                    if selectedTimePeriod == .thisQuarter {
+                        Button {
+                            showingThisQuarterPrepQuickView = true
+                        } label: {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemBackground).opacity(0.8))
+                        .cornerRadius(8)
+                    }
                     // Show Completed
                     HStack(spacing: 4) {
                         Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
@@ -183,6 +211,16 @@ struct PrioritiesView: View {
             .sheet(isPresented: $showingThisWeekPrepQuickView) {
                 ThisWeekPrepQuickView(remindersManager: remindersManager) {
                     showingThisWeekPrepQuickView = false
+                }
+            }
+            .sheet(isPresented: $showingThisMonthPrepQuickView) {
+                ThisMonthPrepQuickView(remindersManager: remindersManager) {
+                    showingThisMonthPrepQuickView = false
+                }
+            }
+            .sheet(isPresented: $showingThisQuarterPrepQuickView) {
+                ThisQuarterPrepQuickView(remindersManager: remindersManager) {
+                    showingThisQuarterPrepQuickView = false
                 }
             }
         }
@@ -389,6 +427,149 @@ struct ThisWeekPrepQuickView: View {
                     let config = CoachConfigStorage.loadPrepare()
                     let weekStart = RemindersManager.startOfCurrentWeek(dayOfWeek: config.week.dayOfWeek)
                     prepItems = await remindersManager.fetchPrepareReminders(listName: "this week", incompleteOnly: true, weekStart: weekStart)
+                    isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Quick view this month's prep (read-only, incomplete only, this month)
+struct ThisMonthPrepQuickView: View {
+    @ObservedObject var remindersManager: RemindersManager
+    var onDismiss: () -> Void
+    @State private var prepItems: [(question: String, answer: String)] = []
+    @State private var isLoading = true
+
+    private let questionLength = 60
+    private let answerLength = 80
+
+    private func short(_ s: String, maxLen: Int) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count <= maxLen { return t }
+        return String(t.prefix(maxLen)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    var body: some View {
+        NavigationView {
+            Group {
+                if isLoading {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if prepItems.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 44))
+                            .foregroundColor(.secondary)
+                        Text("No this month's prep yet")
+                            .font(.headline)
+                        Text("Add prep from Coach → Prepare → This Month")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(Array(prepItems.enumerated()), id: \.offset) { _, item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(short(item.question, maxLen: questionLength))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(short(item.answer, maxLen: answerLength))
+                                    .font(.body)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("This month's prep")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                }
+            }
+            .onAppear {
+                Task {
+                    let monthStart = RemindersManager.startOfCurrentMonth()
+                    prepItems = await remindersManager.fetchPrepareReminders(listName: "this month", incompleteOnly: true, monthStart: monthStart)
+                    isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Quick view this quarter's prep (read-only, incomplete only, this quarter by Prepare config)
+struct ThisQuarterPrepQuickView: View {
+    @ObservedObject var remindersManager: RemindersManager
+    var onDismiss: () -> Void
+    @State private var prepItems: [(question: String, answer: String)] = []
+    @State private var isLoading = true
+
+    private let questionLength = 60
+    private let answerLength = 80
+
+    private func short(_ s: String, maxLen: Int) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count <= maxLen { return t }
+        return String(t.prefix(maxLen)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    var body: some View {
+        NavigationView {
+            Group {
+                if isLoading {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if prepItems.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 44))
+                            .foregroundColor(.secondary)
+                        Text("No this quarter's prep yet")
+                            .font(.headline)
+                        Text("Add prep from Coach → Prepare → This Quarter")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(Array(prepItems.enumerated()), id: \.offset) { _, item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(short(item.question, maxLen: questionLength))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(short(item.answer, maxLen: answerLength))
+                                    .font(.body)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("This quarter's prep")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                }
+            }
+            .onAppear {
+                Task {
+                    let config = CoachConfigStorage.loadPrepare()
+                    let quarterStart = RemindersManager.startOfCurrentQuarter(startMonth: config.quarterStartMonth)
+                    prepItems = await remindersManager.fetchPrepareReminders(listName: "this quarter", incompleteOnly: true, quarterStart: quarterStart)
                     isLoading = false
                 }
             }

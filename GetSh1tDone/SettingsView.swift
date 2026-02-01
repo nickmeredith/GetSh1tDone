@@ -47,18 +47,53 @@ enum ReviewPreparePeriod: String, CaseIterable, Identifiable {
 }
 
 /// Review or Prepare config: one schedule per period (day, week, month, quarter).
+/// For quarter: quarterStartMonth (1–12) is the starting month of the year for quarters (e.g. 1 = Jan–Mar, Apr–Jun…; 4 = Apr–Jun, Jul–Sep…).
 struct ReviewPrepareConfig: Codable, Equatable {
     var day: PeriodSchedule
     var week: PeriodSchedule
     var month: PeriodSchedule
     var quarter: PeriodSchedule
-    
+    /// Starting month of the year for quarters (1 = January … 12 = December). Only used for Prepare → Quarter. Default 1 (calendar quarters).
+    var quarterStartMonth: Int
+
     static let `default` = ReviewPrepareConfig(
         day: PeriodSchedule.defaultForPeriod(.day),
         week: PeriodSchedule.defaultForPeriod(.week),
         month: PeriodSchedule.defaultForPeriod(.month),
-        quarter: PeriodSchedule.defaultForPeriod(.quarter)
+        quarter: PeriodSchedule.defaultForPeriod(.quarter),
+        quarterStartMonth: 1
     )
+
+    init(day: PeriodSchedule, week: PeriodSchedule, month: PeriodSchedule, quarter: PeriodSchedule, quarterStartMonth: Int = 1) {
+        self.day = day
+        self.week = week
+        self.month = month
+        self.quarter = quarter
+        self.quarterStartMonth = min(12, max(1, quarterStartMonth))
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = try c.decode(PeriodSchedule.self, forKey: .day)
+        week = try c.decode(PeriodSchedule.self, forKey: .week)
+        month = try c.decode(PeriodSchedule.self, forKey: .month)
+        quarter = try c.decode(PeriodSchedule.self, forKey: .quarter)
+        quarterStartMonth = (try? c.decode(Int.self, forKey: .quarterStartMonth)) ?? 1
+        quarterStartMonth = min(12, max(1, quarterStartMonth))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(day, forKey: .day)
+        try c.encode(week, forKey: .week)
+        try c.encode(month, forKey: .month)
+        try c.encode(quarter, forKey: .quarter)
+        try c.encode(quarterStartMonth, forKey: .quarterStartMonth)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case day, week, month, quarter, quarterStartMonth
+    }
 }
 
 enum CoachFrequency: String, CaseIterable, Identifiable, Codable {
@@ -255,12 +290,23 @@ struct ReviewConfigView: View {
 
 struct PrepareConfigView: View {
     @State private var config: ReviewPrepareConfig = CoachConfigStorage.loadPrepare()
-    
+    private static let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
     var body: some View {
         Form {
             ForEach(ReviewPreparePeriod.allCases) { period in
                 Section(header: Text(period.rawValue)) {
                     scheduleBinding(for: period)
+                    if period == .quarter {
+                        Picker("Starting month of year (for quarters)", selection: Binding(
+                            get: { config.quarterStartMonth },
+                            set: { config.quarterStartMonth = min(12, max(1, $0)) }
+                        )) {
+                            ForEach(1...12, id: \.self) { month in
+                                Text(Self.monthNames[month - 1]).tag(month)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -270,7 +316,7 @@ struct PrepareConfigView: View {
             CoachConfigStorage.savePrepare(newValue)
         }
     }
-    
+
     @ViewBuilder
     private func scheduleBinding(for period: ReviewPreparePeriod) -> some View {
         let binding = binding(for: period)
@@ -278,7 +324,7 @@ struct PrepareConfigView: View {
         DayOfWeekPicker(dayOfWeek: binding.dayOfWeek, showEveryDay: period == .day)
         DatePicker("Time of day", selection: binding.timeOfDay, displayedComponents: [.hourAndMinute])
     }
-    
+
     private func binding(for period: ReviewPreparePeriod) -> Binding<PeriodSchedule> {
         switch period {
         case .day: return $config.day

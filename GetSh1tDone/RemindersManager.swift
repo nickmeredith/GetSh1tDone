@@ -1381,7 +1381,9 @@ class RemindersManager: ObservableObject {
     ///   - incompleteOnly: if true, only return reminders that are not completed.
     ///   - todayOnly: if true, only return reminders whose title ends with today's date (d MMM yy).
     ///   - weekStart: if set, only return reminders with creationDate >= weekStart and creationDate < weekStart + 7 days (for "this week" quick view).
-    func fetchPrepareReminders(listName: String, incompleteOnly: Bool = false, todayOnly: Bool = false, weekStart: Date? = nil) async -> [(question: String, answer: String)] {
+    ///   - monthStart: if set, only return reminders with creationDate >= monthStart and creationDate < monthStart + 1 month (for "this month" quick view).
+    ///   - quarterStart: if set, only return reminders with creationDate >= quarterStart and creationDate < quarterStart + 3 months (for "this quarter" quick view).
+    func fetchPrepareReminders(listName: String, incompleteOnly: Bool = false, todayOnly: Bool = false, weekStart: Date? = nil, monthStart: Date? = nil, quarterStart: Date? = nil) async -> [(question: String, answer: String)] {
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
         if #available(iOS 17.0, macOS 14.0, *) {
@@ -1403,6 +1405,8 @@ class RemindersManager: ObservableObject {
         let prefix = "Prepare-"
         let cal = Calendar.current
         let endOfWeek: Date? = weekStart.map { cal.date(byAdding: .day, value: 7, to: $0) ?? $0 }
+        let endOfMonth: Date? = monthStart.map { cal.date(byAdding: .month, value: 1, to: $0) ?? $0 }
+        let endOfQuarter: Date? = quarterStart.map { cal.date(byAdding: .month, value: 3, to: $0) ?? $0 }
         var result: [(question: String, answer: String)] = []
         for r in reminders {
             guard let title = r.title, title.hasPrefix(prefix) else { continue }
@@ -1412,11 +1416,37 @@ class RemindersManager: ObservableObject {
                 let created = r.creationDate ?? .distantPast
                 if created < start || created >= end { continue }
             }
+            if let start = monthStart, let end = endOfMonth {
+                let created = r.creationDate ?? .distantPast
+                if created < start || created >= end { continue }
+            }
+            if let start = quarterStart, let end = endOfQuarter {
+                let created = r.creationDate ?? .distantPast
+                if created < start || created >= end { continue }
+            }
             let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
             let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             result.append((question: question, answer: answer))
         }
         return result
+    }
+
+    /// Start of the current calendar month (first day at 00:00).
+    static func startOfCurrentMonth() -> Date {
+        let cal = Calendar.current
+        return cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+    }
+
+    /// Start of the current quarter (first day at 00:00). startMonth: 1 = Jan (Q1 Jan–Mar…), 4 = Apr (Q1 Apr–Jun…), etc.
+    static func startOfCurrentQuarter(startMonth: Int) -> Date {
+        let cal = Calendar.current
+        let now = Date()
+        let month = cal.component(.month, from: now)
+        let year = cal.component(.year, from: now)
+        let monthsSinceStart = (month - startMonth + 12) % 12
+        let quarterIndex = monthsSinceStart / 3
+        let quarterStartMonth = (startMonth + 3 * quarterIndex - 1) % 12 + 1
+        return cal.date(from: DateComponents(year: year, month: quarterStartMonth, day: 1)) ?? now
     }
 
     /// Start of the current "prep week" (most recent occurrence of the given weekday at 00:00). dayOfWeek: 1 = Sunday … 7 = Saturday (Calendar.weekday). Returns nil if dayOfWeek is 0.
@@ -1519,6 +1549,118 @@ class RemindersManager: ObservableObject {
         }
         fromThisWeek.sort { $0.created < $1.created }
         return fromThisWeek.map { ($0.question, $0.answer) }
+    }
+
+    /// Call when starting a Prepare session for This Month: completes any Prepare reminders from before this month, returns this month's for prefilling.
+    func prepareSessionForMonth(listName: String) async -> [(question: String, answer: String)] {
+        let startOfThisMonth = Self.startOfCurrentMonth()
+        let cal = Calendar.current
+        let startOfNextMonth = cal.date(byAdding: .month, value: 1, to: startOfThisMonth) ?? startOfThisMonth
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else { return [] }
+        let calendars = eventStore.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else { return [] }
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let reminders = await withCheckedContinuation { (continuation: CheckedContinuation<[EKReminder], Never>) in
+            eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0 ?? []) }
+        }
+        let prefix = "Prepare-"
+        var fromThisMonth: [(created: Date, question: String, answer: String)] = []
+        for r in reminders {
+            guard let title = r.title, title.hasPrefix(prefix) else { continue }
+            let created = r.creationDate ?? .distantPast
+            if created < startOfThisMonth {
+                if !r.isCompleted {
+                    r.isCompleted = true
+                    try? eventStore.save(r, commit: true)
+                }
+                continue
+            }
+            if created >= startOfNextMonth { continue }
+            let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
+            let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            fromThisMonth.append((created: created, question: question, answer: answer))
+        }
+        fromThisMonth.sort { $0.created < $1.created }
+        return fromThisMonth.map { ($0.question, $0.answer) }
+    }
+
+    /// True if today is the first occurrence of the given weekday in the current month (for monthly prep day). dayOfWeek: 1 = Sunday … 7 = Saturday.
+    static func isFirstWeekdayOfMonth(dayOfWeek: Int) -> Bool {
+        guard dayOfWeek >= 1, dayOfWeek <= 7 else { return false }
+        let cal = Calendar.current
+        let now = Date()
+        let startOfMonth = startOfCurrentMonth()
+        let weekdayOfFirst = cal.component(.weekday, from: startOfMonth)
+        var daysToAdd = dayOfWeek - weekdayOfFirst
+        if daysToAdd < 0 { daysToAdd += 7 }
+        guard let firstOccurrence = cal.date(byAdding: .day, value: daysToAdd, to: startOfMonth) else { return false }
+        let startOfToday = cal.startOfDay(for: now)
+        let startOfPrepDay = cal.startOfDay(for: firstOccurrence)
+        return startOfToday == startOfPrepDay
+    }
+
+    /// True if today is the first occurrence of the given weekday in the current quarter (for quarter prep day). dayOfWeek: 1 = Sunday … 7 = Saturday. startMonth: 1–12 = starting month of year for quarters.
+    static func isFirstWeekdayOfQuarter(dayOfWeek: Int, startMonth: Int) -> Bool {
+        guard dayOfWeek >= 1, dayOfWeek <= 7, startMonth >= 1, startMonth <= 12 else { return false }
+        let cal = Calendar.current
+        let now = Date()
+        let startOfQuarter = startOfCurrentQuarter(startMonth: startMonth)
+        let weekdayOfFirst = cal.component(.weekday, from: startOfQuarter)
+        var daysToAdd = dayOfWeek - weekdayOfFirst
+        if daysToAdd < 0 { daysToAdd += 7 }
+        guard let firstOccurrence = cal.date(byAdding: .day, value: daysToAdd, to: startOfQuarter) else { return false }
+        let startOfToday = cal.startOfDay(for: now)
+        let startOfPrepDay = cal.startOfDay(for: firstOccurrence)
+        return startOfToday == startOfPrepDay
+    }
+
+    /// Call when starting a Prepare session for This Quarter: completes any Prepare reminders from before this quarter, returns this quarter's for prefilling. startMonth: 1–12 from Prepare config.
+    func prepareSessionForQuarter(listName: String, startMonth: Int) async -> [(question: String, answer: String)] {
+        let startOfThisQuarter = Self.startOfCurrentQuarter(startMonth: startMonth)
+        let cal = Calendar.current
+        let startOfNextQuarter = cal.date(byAdding: .month, value: 3, to: startOfThisQuarter) ?? startOfThisQuarter
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else { return [] }
+        let calendars = eventStore.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else { return [] }
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let reminders = await withCheckedContinuation { (continuation: CheckedContinuation<[EKReminder], Never>) in
+            eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0 ?? []) }
+        }
+        let prefix = "Prepare-"
+        var fromThisQuarter: [(created: Date, question: String, answer: String)] = []
+        for r in reminders {
+            guard let title = r.title, title.hasPrefix(prefix) else { continue }
+            let created = r.creationDate ?? .distantPast
+            if created < startOfThisQuarter {
+                if !r.isCompleted {
+                    r.isCompleted = true
+                    try? eventStore.save(r, commit: true)
+                }
+                continue
+            }
+            if created >= startOfNextQuarter { continue }
+            let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
+            let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            fromThisQuarter.append((created: created, question: question, answer: answer))
+        }
+        fromThisQuarter.sort { $0.created < $1.created }
+        return fromThisQuarter.map { ($0.question, $0.answer) }
     }
 
     // MARK: - Delegate Management

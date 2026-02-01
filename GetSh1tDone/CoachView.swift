@@ -220,6 +220,36 @@ struct PrepareQuestionsView: View {
                     }
                 }
             }
+            if period == .month {
+                let config = CoachConfigStorage.loadPrepare()
+                if RemindersManager.isFirstWeekdayOfMonth(dayOfWeek: config.month.dayOfWeek) {
+                    Task { @MainActor in
+                        let prefill = await remindersManager.prepareSessionForMonth(listName: period.reminderListName)
+                        if !prefill.isEmpty {
+                            var newAnswers = Array(repeating: "", count: period.questions.count)
+                            for (i, pair) in prefill.enumerated() where i < newAnswers.count {
+                                newAnswers[i] = pair.answer
+                            }
+                            answers = newAnswers
+                        }
+                    }
+                }
+            }
+            if period == .quarter {
+                let config = CoachConfigStorage.loadPrepare()
+                if RemindersManager.isFirstWeekdayOfQuarter(dayOfWeek: config.quarter.dayOfWeek, startMonth: config.quarterStartMonth) {
+                    Task { @MainActor in
+                        let prefill = await remindersManager.prepareSessionForQuarter(listName: period.reminderListName, startMonth: config.quarterStartMonth)
+                        if !prefill.isEmpty {
+                            var newAnswers = Array(repeating: "", count: period.questions.count)
+                            for (i, pair) in prefill.enumerated() where i < newAnswers.count {
+                                newAnswers[i] = pair.answer
+                            }
+                            answers = newAnswers
+                        }
+                    }
+                }
+            }
         }
     }
 
