@@ -253,6 +253,25 @@ struct PrepareQuestionsView: View {
         }
     }
 
+    private func titleSuffixForPeriod() -> String? {
+        let config = CoachConfigStorage.loadPrepare()
+        switch period {
+        case .day:
+            return nil
+        case .week:
+            guard let weekStart = RemindersManager.startOfCurrentWeek(dayOfWeek: config.week.dayOfWeek) else { return nil }
+            let df = DateFormatter()
+            df.dateFormat = "d MMM yy"
+            return "w/c-" + df.string(from: weekStart)
+        case .month:
+            let df = DateFormatter()
+            df.dateFormat = "MMM yyyy"
+            return df.string(from: Date())
+        case .quarter:
+            return "Q" + String(RemindersManager.currentQuarterNumber(startMonth: config.quarterStartMonth))
+        }
+    }
+
     private func submitToReminders() {
         errorMessage = nil
         isWriting = true
@@ -261,9 +280,10 @@ struct PrepareQuestionsView: View {
             writtenAt: Date(),
             answers: Array(zip(period.questions, answers))
         )
+        let suffix = titleSuffixForPeriod()
         Task { @MainActor in
             do {
-                try await remindersManager.addPrepareReminders(listName: result.period.reminderListName, questionAnswerPairs: result.answers)
+                try await remindersManager.addPrepareReminders(listName: result.period.reminderListName, questionAnswerPairs: result.answers, titleSuffix: suffix)
                 didWrite = true
                 dismiss()
                 onSuccessDismissToRoot?()

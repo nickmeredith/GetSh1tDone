@@ -321,7 +321,7 @@ struct PrepareConfigView: View {
     private func scheduleBinding(for period: ReviewPreparePeriod) -> some View {
         let binding = binding(for: period)
         Toggle("Enable", isOn: binding.isEnabled)
-        DayOfWeekPicker(dayOfWeek: binding.dayOfWeek, showEveryDay: period == .day)
+        DayOfWeekPicker(dayOfWeek: binding.dayOfWeek, showEveryDay: period == .day, label: period == .week ? "Starting weekday" : "Day of week")
         DatePicker("Time of day", selection: binding.timeOfDay, displayedComponents: [.hourAndMinute])
     }
 
@@ -340,7 +340,8 @@ struct PrepareConfigView: View {
 private struct DayOfWeekPicker: View {
     @Binding var dayOfWeek: Int
     let showEveryDay: Bool
-    
+    var label: String = "Day of week"
+
     private static let weekdays: [(Int, String)] = [
         (1, "Sunday"),
         (2, "Monday"),
@@ -350,9 +351,9 @@ private struct DayOfWeekPicker: View {
         (6, "Friday"),
         (7, "Saturday")
     ]
-    
+
     var body: some View {
-        Picker("Day of week", selection: $dayOfWeek) {
+        Picker(label, selection: $dayOfWeek) {
             if showEveryDay {
                 Text("Every day").tag(0)
             }

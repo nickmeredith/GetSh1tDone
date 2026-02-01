@@ -1317,8 +1317,8 @@ class RemindersManager: ObservableObject {
     
     // MARK: - Prepare reminders (Coach → Prepare answers into lists: today, this week, this month, this quarter)
     
-    /// Adds Prepare reminders to the given list. Title format: "Prepare-Question-Date"; detail (answer only) in notes.
-    func addPrepareReminders(listName: String, questionAnswerPairs: [(question: String, answer: String)]) async throws {
+    /// Adds Prepare reminders to the given list. Title format: "Prepare-Question-{suffix}"; detail (answer only) in notes. titleSuffix: when nil uses today's date (d MMM yy); otherwise use provided suffix (e.g. "w/c-20 Jan 25", "Jan 2025", "Q1").
+    func addPrepareReminders(listName: String, questionAnswerPairs: [(question: String, answer: String)], titleSuffix: String? = nil) async throws {
         let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
         let isAuthorized: Bool
         if #available(iOS 17.0, macOS 14.0, *) {
@@ -1333,7 +1333,7 @@ class RemindersManager: ObservableObject {
             Task.detached(priority: .userInitiated) {
                 let store = EKEventStore()
                 let result = Result<Void, Error> {
-                    try Self.addPrepareRemindersSync(store: store, listName: listName, questionAnswerPairs: questionAnswerPairs)
+                    try Self.addPrepareRemindersSync(store: store, listName: listName, questionAnswerPairs: questionAnswerPairs, titleSuffix: titleSuffix)
                 }
                 switch result {
                 case .success:
@@ -1352,8 +1352,8 @@ class RemindersManager: ObservableObject {
         }
     }
     
-    /// Performs the actual EventKit work on a background thread. Title: "Prepare-Question-Date"; notes: detail (answer) only.
-    private nonisolated static func addPrepareRemindersSync(store: EKEventStore, listName: String, questionAnswerPairs: [(question: String, answer: String)]) throws {
+    /// Performs the actual EventKit work on a background thread. Title: "Prepare-Question-{suffix}"; notes: detail (answer) only.
+    private nonisolated static func addPrepareRemindersSync(store: EKEventStore, listName: String, questionAnswerPairs: [(question: String, answer: String)], titleSuffix: String? = nil) throws {
         let calendars = store.calendars(for: .reminder)
         let listNameLower = listName.lowercased()
         guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else {
@@ -1361,12 +1361,13 @@ class RemindersManager: ObservableObject {
         }
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "d MMM yy"
-        let dateString = dateFormatter.string(from: Date())
+        let defaultSuffix = dateFormatter.string(from: Date())
+        let suffix = titleSuffix ?? defaultSuffix
         for (_, (question, answer)) in questionAnswerPairs.enumerated() {
             let answerTrimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             let questionForTitle = question.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             let reminder = EKReminder(eventStore: store)
-            reminder.title = "Prepare-\(questionForTitle)-\(dateString)"
+            reminder.title = "Prepare-\(questionForTitle)-\(suffix)"
             reminder.notes = answerTrimmed
             reminder.calendar = calendar
             try store.save(reminder, commit: true)
@@ -1462,13 +1463,30 @@ class RemindersManager: ObservableObject {
         return start
     }
 
-    /// Extracts question from reminder title "Prepare-Question-Date" by stripping prefix and trailing "-d MMM yy".
+    /// Extracts question from reminder title by stripping prefix and trailing suffix. Suffixes: today "-d MMM yy"; week "w/c-d MMM yy"; month "-MMM yyyy"; quarter "-Q1"…"-Q4".
     private static func prepareQuestionFromTitle(_ title: String, prefix: String) -> String {
         let afterPrefix = title.hasPrefix(prefix) ? String(title.dropFirst(prefix.count)) : title
-        guard let range = afterPrefix.range(of: #"-\d{1,2} [A-Za-z]{3} \d{2}$"#, options: .regularExpression) else {
-            return afterPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            #"-w/c-\d{1,2} [A-Za-z]{3} \d{2}$"#,  // week: w/c-20 Jan 25
+            #"-\d{1,2} [A-Za-z]{3} \d{2}$"#,      // today: -24 Jan 25
+            #"-[A-Za-z]{3} \d{4}$"#,              // month: -Jan 2025
+            #"-Q[1-4]$"#                           // quarter: -Q1
+        ]
+        for pattern in patterns {
+            if let range = afterPrefix.range(of: pattern, options: .regularExpression), range.upperBound == afterPrefix.endIndex {
+                return String(afterPrefix[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
-        return String(afterPrefix[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return afterPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Current quarter number (1–4) from the given starting month. startMonth: 1 = Jan (Q1 Jan–Mar…), 4 = Apr (Q1 Apr–Jun…), etc.
+    static func currentQuarterNumber(startMonth: Int) -> Int {
+        let cal = Calendar.current
+        let month = cal.component(.month, from: Date())
+        let monthsSinceStart = (month - startMonth + 12) % 12
+        let quarterIndex = monthsSinceStart / 3
+        return quarterIndex + 1
     }
     
     /// Call when starting a Prepare session for Today: completes any Prepare reminders from before today, returns today's (same day) for prefilling the form.
