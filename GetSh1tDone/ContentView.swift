@@ -14,6 +14,7 @@ struct ContentView: View {
                 .tag(0)
             
             CoachView()
+                .environmentObject(remindersManager)
                 .tabItem {
                     Label("Coach", systemImage: "person.crop.circle.fill")
                 }

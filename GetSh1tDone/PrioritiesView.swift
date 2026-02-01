@@ -17,6 +17,7 @@ struct PrioritiesView: View {
     @State private var showingTaskDetail: TaskItem?
     @State private var showCompletedTasks = false
     @State private var planDelegateFilter: Delegate?
+    @State private var showingTodayPrepQuickView = false
     
     enum TimePeriod: String, CaseIterable {
         case today = "Today"
@@ -44,18 +45,20 @@ struct PrioritiesView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Time Period Tabs
+                // Time Period Tabs (wider so at least 4 segments fit on one line)
                 Picker("Time Period", selection: $selectedTimePeriod) {
                     ForEach(TimePeriod.allCases, id: \.self) { period in
                         Text(period.rawValue).tag(period)
                     }
                 }
                 .pickerStyle(.segmented)
-                .padding()
+                .frame(minWidth: 320)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 
-                // Delegate filter and Show Completed on one line
+                // Delegate, Today's prep (when Today), and Completed on one line
                 HStack(spacing: 12) {
-                    // Delegate filter (wider, same as expanded Delegate quadrant)
+                    // Delegate filter – field wide enough for 5-letter word on one line
                     HStack(spacing: 8) {
                         Text("Delegate")
                             .font(.subheadline)
@@ -68,14 +71,27 @@ struct PrioritiesView: View {
                         }
                         .pickerStyle(.menu)
                         .labelsHidden()
-                        .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                        .frame(minWidth: 88, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(Color(.systemBackground).opacity(0.8))
                     .cornerRadius(8)
                     Spacer(minLength: 0)
+                    // Today's prep quick view (same row, only when Today selected)
+                    if selectedTimePeriod == .today {
+                        Button {
+                            showingTodayPrepQuickView = true
+                        } label: {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemBackground).opacity(0.8))
+                        .cornerRadius(8)
+                    }
                     // Show Completed
                     HStack(spacing: 4) {
                         Image(systemName: showCompletedTasks ? "eye.fill" : "eye.slash.fill")
@@ -145,6 +161,11 @@ struct PrioritiesView: View {
             .sheet(item: $showingTaskDetail) { task in
                 TaskDetailView(task: task, remindersManager: remindersManager)
             }
+            .sheet(isPresented: $showingTodayPrepQuickView) {
+                TodayPrepQuickView(remindersManager: remindersManager) {
+                    showingTodayPrepQuickView = false
+                }
+            }
         }
     }
     
@@ -210,6 +231,76 @@ struct PrioritiesView: View {
         
         if let reviewDate = lastReviewDate {
             UserDefaults.standard.set(reviewDate, forKey: AppConfigKeys.lastPriorityReview)
+        }
+    }
+}
+
+// MARK: - Quick view today's prep (read-only)
+struct TodayPrepQuickView: View {
+    @ObservedObject var remindersManager: RemindersManager
+    var onDismiss: () -> Void
+    @State private var prepItems: [(question: String, answer: String)] = []
+    @State private var isLoading = true
+    
+    private let questionLength = 60
+    private let answerLength = 80
+    
+    private func short(_ s: String, maxLen: Int) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count <= maxLen { return t }
+        return String(t.prefix(maxLen)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+    
+    var body: some View {
+        NavigationView {
+            Group {
+                if isLoading {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if prepItems.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 44))
+                            .foregroundColor(.secondary)
+                        Text("No today's prep yet")
+                            .font(.headline)
+                        Text("Add prep from Coach → Prepare → Today")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(Array(prepItems.enumerated()), id: \.offset) { _, item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(short(item.question, maxLen: questionLength))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(short(item.answer, maxLen: answerLength))
+                                    .font(.body)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Today's prep")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                }
+            }
+            .onAppear {
+                Task {
+                    prepItems = await remindersManager.fetchPrepareReminders(listName: "today", incompleteOnly: true, todayOnly: true)
+                    isLoading = false
+                }
+            }
         }
     }
 }

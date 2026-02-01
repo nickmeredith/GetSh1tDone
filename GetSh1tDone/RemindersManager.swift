@@ -1315,6 +1315,151 @@ class RemindersManager: ObservableObject {
         }
     }
     
+    // MARK: - Prepare reminders (Coach → Prepare answers into lists: today, this week, this month, this quarter)
+    
+    /// Adds Prepare reminders to the given list. Title format: "Prepare-Question-Date"; detail (answer only) in notes.
+    func addPrepareReminders(listName: String, questionAnswerPairs: [(question: String, answer: String)]) async throws {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else {
+            throw NSError(domain: "RemindersManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authorized to access reminders."])
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            Task.detached(priority: .userInitiated) {
+                let store = EKEventStore()
+                let result = Result<Void, Error> {
+                    try Self.addPrepareRemindersSync(store: store, listName: listName, questionAnswerPairs: questionAnswerPairs)
+                }
+                switch result {
+                case .success:
+                    await MainActor.run {
+                        self.lastError = nil
+                        Task { await self.loadReminders() }
+                        continuation.resume()
+                    }
+                case .failure(let error):
+                    await MainActor.run {
+                        self.lastError = (error as NSError).localizedDescription
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Performs the actual EventKit work on a background thread. Title: "Prepare-Question-Date"; notes: detail (answer) only.
+    private nonisolated static func addPrepareRemindersSync(store: EKEventStore, listName: String, questionAnswerPairs: [(question: String, answer: String)]) throws {
+        let calendars = store.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else {
+            throw NSError(domain: "RemindersManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Reminder list \"\(listName)\" not found. Create a list named \"\(listName)\" in the Reminders app."])
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "d MMM yy"
+        let dateString = dateFormatter.string(from: Date())
+        for (_, (question, answer)) in questionAnswerPairs.enumerated() {
+            let answerTrimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let questionForTitle = question.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let reminder = EKReminder(eventStore: store)
+            reminder.title = "Prepare-\(questionForTitle)-\(dateString)"
+            reminder.notes = answerTrimmed
+            reminder.calendar = calendar
+            try store.save(reminder, commit: true)
+            #if DEBUG
+            print("✅ Prepare reminder added to \(calendar.title): \(reminder.title ?? "")")
+            #endif
+        }
+    }
+    
+    /// Fetches "Prepare-" reminders from the given list (e.g. "today"). Title format: Prepare-Question-Date; notes = detail (answer).
+    /// - Parameters:
+    ///   - incompleteOnly: if true, only return reminders that are not completed.
+    ///   - todayOnly: if true, only return reminders whose title ends with today's date (d MMM yy).
+    func fetchPrepareReminders(listName: String, incompleteOnly: Bool = false, todayOnly: Bool = false) async -> [(question: String, answer: String)] {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else { return [] }
+        let calendars = eventStore.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else { return [] }
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let reminders = await withCheckedContinuation { (continuation: CheckedContinuation<[EKReminder], Never>) in
+            eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0 ?? []) }
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "d MMM yy"
+        let todayString = dateFormatter.string(from: Date())
+        let prefix = "Prepare-"
+        var result: [(question: String, answer: String)] = []
+        for r in reminders {
+            guard let title = r.title, title.hasPrefix(prefix) else { continue }
+            if incompleteOnly, r.isCompleted { continue }
+            if todayOnly, !title.hasSuffix("-" + todayString) { continue }
+            let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
+            let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append((question: question, answer: answer))
+        }
+        return result
+    }
+
+    /// Extracts question from reminder title "Prepare-Question-Date" by stripping prefix and trailing "-d MMM yy".
+    private static func prepareQuestionFromTitle(_ title: String, prefix: String) -> String {
+        let afterPrefix = title.hasPrefix(prefix) ? String(title.dropFirst(prefix.count)) : title
+        guard let range = afterPrefix.range(of: #"-\d{1,2} [A-Za-z]{3} \d{2}$"#, options: .regularExpression) else {
+            return afterPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return String(afterPrefix[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    /// Call when starting a Prepare session for Today: completes any Prepare reminders from before today, returns today's (same day) for prefilling the form.
+    func prepareSessionForToday(listName: String) async -> [(question: String, answer: String)] {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let isAuthorized: Bool
+        if #available(iOS 17.0, macOS 14.0, *) {
+            isAuthorized = currentStatus == .fullAccess
+        } else {
+            isAuthorized = currentStatus == .authorized
+        }
+        guard isAuthorized else { return [] }
+        let calendars = eventStore.calendars(for: .reminder)
+        let listNameLower = listName.lowercased()
+        guard let calendar = calendars.first(where: { $0.title.lowercased() == listNameLower }) else { return [] }
+        let predicate = eventStore.predicateForReminders(in: [calendar])
+        let reminders = await withCheckedContinuation { (continuation: CheckedContinuation<[EKReminder], Never>) in
+            eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0 ?? []) }
+        }
+        let prefix = "Prepare-"
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        var fromToday: [(created: Date, question: String, answer: String)] = []
+        for r in reminders {
+            guard let title = r.title, title.hasPrefix(prefix) else { continue }
+            let created = r.creationDate ?? .distantPast
+            if created < startOfToday {
+                if !r.isCompleted {
+                    r.isCompleted = true
+                    try? eventStore.save(r, commit: true)
+                }
+                continue
+            }
+            let question = Self.prepareQuestionFromTitle(title, prefix: prefix)
+            let answer = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            fromToday.append((created: created, question: question, answer: answer))
+        }
+        fromToday.sort { $0.created < $1.created }
+        return fromToday.map { ($0.question, $0.answer) }
+    }
+    
     // MARK: - Delegate Management
     
     func loadDelegates() async {
